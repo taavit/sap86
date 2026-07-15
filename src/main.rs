@@ -5,7 +5,7 @@ use crate::compiler::compile_program;
 mod compiler;
 
 struct Registers {
-    gpr: [u8; 4],
+    gpr: [u8; 16],
     ip: u8,
 }
 
@@ -22,10 +22,10 @@ impl Registers {
         self.ip = ip;
     }
 
-    pub fn write_u8(&mut self, reg: Register, value: u8) {
+    pub fn write_u8(&mut self, reg: Register16, value: u8) {
         self.gpr[reg as usize] = value;
     }
-    pub fn read_u8(&self, reg: Register) -> u8 {
+    pub fn read_u8(&self, reg: Register16) -> u8 {
         self.gpr[reg as usize]
     }
 }
@@ -40,26 +40,46 @@ struct Cpu {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Register {
-    A,
-    B,
-    C,
-    D,
+enum Register16 {
+    Ax,
+    Cx,
+    Dx,
+    Bx,
+    Sp,
+    Bp,
+    Si,
+    Di,
+}
+
+impl From<u8> for Register16 {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => Register16::Ax,
+            1 => Register16::Cx,
+            2 => Register16::Dx,
+            3 => Register16::Bx,
+            4 => Register16::Sp,
+            5 => Register16::Bp,
+            6 => Register16::Si,
+            7 => Register16::Di,
+            _ => panic!("Invalid value"),
+        }
+    }
 }
 
 #[derive(Debug)]
 enum Op {
     Nop,
-    Dec { dst: Register },
-    Inc { dst: Register },
+    Dec { dst: Register16 },
+    Inc { dst: Register16 },
     Ldi { imm: u8 },
     Lea { addr: u8 },
     Jnz { addr: u8 },
     Jz { addr: u8 },
     Jmp { addr: u8 },
-    Ld { src: Register },
-    Test { src: Register },
-    Mov { src: Register, dst: Register },
+    Ld { src: Register16 },
+    Test { src: Register16 },
+    Mov { src: Register16, dst: Register16 },
     Int(u8),
     Halt,
 }
@@ -68,7 +88,7 @@ impl Cpu {
     pub fn new() -> Self {
         Self {
             flags: Flags { zero: false },
-            registers: Registers { gpr: [0; 4], ip: 0 },
+            registers: Registers { gpr: [0; 16], ip: 0 },
             halted: false,
         }
     }
@@ -79,10 +99,10 @@ impl Cpu {
                 self.halted = true;
             }
             Op::Lea { addr } => {
-                self.registers.write_u8(Register::A, addr);
+                self.registers.write_u8(Register16::Ax, addr);
             }
             Op::Ldi { imm } => {
-                self.registers.write_u8(Register::A, imm);
+                self.registers.write_u8(Register16::Ax, imm);
             }
             Op::Dec { dst } => {
                 let dst_val = self.registers.read_u8(dst);
@@ -115,22 +135,21 @@ impl Cpu {
             Op::Ld { src } => {
                 let addr = self.registers.read_u8(src);
                 let value = machine.memory.read_u8(addr);
-                self.registers.write_u8(Register::A, value);
+                self.registers.write_u8(Register16::Ax, value);
             }
             Op::Mov { dst, src } => {
                 let v = self.registers.read_u8(src);
                 self.registers.write_u8(dst, v);
             }
             Op::Int(int) => match int {
-                1 => {
-                    print!("{}", self.registers.read_u8(Register::A) as char);
+                0x10 => {
+                    print!("{}", self.registers.read_u8(Register16::Ax) as char);
                 }
                 _ => {
                     panic!("Invalid interrupt");
                 }
             },
             Op::Nop => {}
-            _ => {}
         }
     }
 
@@ -146,36 +165,30 @@ impl Cpu {
             },
             0x20..=0x2F => {
                 let src = match (v & 0x0C) >> 2 {
-                    0 => Register::A,
-                    1 => Register::B,
-                    2 => Register::C,
-                    3 => Register::D,
+                    0 => Register16::Ax,
+                    1 => Register16::Cx,
+                    2 => Register16::Dx,
+                    3 => Register16::Bx,
                     _ => unreachable!(),
                 };
                 let dst = match v & 0x03 {
-                    0 => Register::A,
-                    1 => Register::B,
-                    2 => Register::C,
-                    3 => Register::D,
+                    0 => Register16::Ax,
+                    1 => Register16::Cx,
+                    2 => Register16::Dx,
+                    3 => Register16::Bx,
                     _ => unreachable!(),
                 };
                 Op::Mov { src, dst }
             }
-            0x30..=0x3F => Op::Int(v & 0x0F),
-            0x40..=0x4F => {
-                let op: u8 = (v & 0x0C) >> 2;
-                let dst = match v & 0x03 {
-                    0 => Register::A,
-                    1 => Register::B,
-                    2 => Register::C,
-                    3 => Register::D,
-                    _ => unreachable!(),
-                };
-                match op {
-                    0x00 => Op::Inc { dst },
-                    0x01 => Op::Dec { dst },
-                    _ => unreachable!(),
-                }
+            0xCD => Op::Int(machine.read_u8(self)),
+            0xCC => Op::Int(0x03),
+            0x40..=0x47 => {
+                let dst = Register16::from(v & 0x07);
+                Op::Inc { dst }
+            }
+            0x48..=0x4F => {
+                let dst = Register16::from(v& 0x07);
+                Op::Dec { dst }
             }
             0x50 => Op::Jnz {
                 addr: machine.read_u8(self),
@@ -188,25 +201,25 @@ impl Cpu {
             },
             0x60..=0x63 => {
                 let src = match v & 0x03 {
-                    0 => Register::A,
-                    1 => Register::B,
-                    2 => Register::C,
-                    3 => Register::D,
+                    0 => Register16::Ax,
+                    1 => Register16::Cx,
+                    2 => Register16::Dx,
+                    3 => Register16::Bx,
                     _ => unreachable!(),
                 };
                 Op::Ld { src }
             }
             0x70..=0x73 => {
                 let src = match v & 0x03 {
-                    0 => Register::A,
-                    1 => Register::B,
-                    2 => Register::C,
-                    3 => Register::D,
+                    0 => Register16::Ax,
+                    1 => Register16::Cx,
+                    2 => Register16::Dx,
+                    3 => Register16::Bx,
                     _ => unreachable!(),
                 };
                 Op::Test { src }
             }
-            0xFF => Op::Halt,
+            0xF4 => Op::Halt,
             i => panic!("Unkown command: {i}"),
         }
     }
@@ -244,7 +257,7 @@ impl Machine {
     }
 
     pub fn read_u8(&mut self, cpu: &mut Cpu) -> u8 {
-        let r = self.memory.read_u8(cpu.registers.ip);
+        let r = self.memory.read_u8(cpu.registers.ip());
         cpu.registers.step_ip();
         r
     }

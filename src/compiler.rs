@@ -8,11 +8,24 @@ struct LabelMatch {
 
 fn decode_register(r: &str) -> u8 {
     match r.trim() {
-        "a" => 0,
-        "b" => 1,
-        "c" => 2,
-        "d" => 3,
+        "ax" => 0,
+        "cx" => 1,
+        "dx" => 2,
+        "bx" => 3,
+        "sp" => 4,
+        "bp" => 5,
+        "si" => 6,
+        "di" => 7,
         _ => panic!("Invalid register"),
+    }
+}
+
+fn parse_argument(arg: &str) -> u8 {
+    let arg = arg.trim();
+    if let Some(arg) = arg.strip_suffix('h') {
+        u8::from_str_radix(arg, 16).unwrap()
+    } else {
+        arg.parse().unwrap()
     }
 }
 
@@ -25,33 +38,65 @@ pub fn compile_program(program: &str) -> Vec<u8> {
         if line.is_empty() {
             continue;
         }
-        if let Some(lda) = line.strip_prefix("ldi") {
-            res.push(0x10);
-            res.push(lda.trim().parse().unwrap())
-        } else if let Some(dest) = line.strip_prefix("lea") {
-            res.push(0x11);
-            let entry = labels.entry(dest.trim().to_string()).or_default();
-            entry.places.push(res.len() as u8);
-            res.push(0);
-        } else if let Some(mov) = line.strip_prefix("mov") {
-            if let Some((reg1, reg2)) = mov.split_once(',') {
-                let dst = decode_register(reg1);
-                let src = decode_register(reg2) << 2;
-                res.push(0x20 + dst + src);
-            } else {
-                panic!("Invalid command");
+        let mut op = line.split_whitespace();
+        match op.next() {
+            Some("add") => {
+                let Some(arg) = op.next() else {
+                    panic!("Missing argument");
+                };
+                res.push(0x01);
+                res.push(parse_argument(arg));
+                continue;
             }
-        } else if let Some(int) = line.strip_prefix("int") {
-            let v: u8 = int.trim().parse().unwrap();
-            res.push(0x30 + (v & 0x0F));
-        } else if let Some(dest) = line.strip_prefix("inc") {
+            Some("ldi") => {
+                let Some(arg) = op.next() else {
+                    panic!("Missing argument");
+                };
+                res.push(0x10);
+                res.push(parse_argument(arg));
+                continue;
+            }
+            Some("lea") => {
+                res.push(0x11);
+                let Some(dest) = op.next() else {
+                    panic!("Missing argument");
+                };
+                let entry = labels.entry(dest.trim().to_string()).or_default();
+                entry.places.push(res.len() as u8);
+                res.push(0);
+                continue;
+            }
+            Some("mov") => {
+                let next = op.next();
+                if let Some((reg1, reg2)) = next.and_then(|s| s.split_once(',')) {
+                    let dst = decode_register(reg1);
+                    let src = decode_register(reg2) << 2;
+                    res.push(0x20 + dst + src);
+                } else {
+                    panic!("Invalid command");
+                }
+                continue;
+            }
+            Some("int") => {
+                let v = op.next().map(parse_argument).unwrap();
+                if v == 3 {
+                    res.push(0xCC);
+                } else {
+                    res.push(0xCD);
+                    res.push(v);
+                }
+                continue;
+            }
+            _ => {}
+        }
+        if let Some(dest) = line.strip_prefix("inc") {
             let dst = decode_register(dest);
             res.push(0x40 + dst);
         } else if let Some(dest) = line.strip_prefix("dec") {
             let dst = decode_register(dest);
             res.push(0x48 + dst);
         } else if line == "hlt" {
-            res.push(0xFF);
+            res.push(0xF4);
         } else if let Some(dest) = line.strip_prefix("jnz") {
             res.push(0x50);
             let entry = labels.entry(dest.trim().to_string()).or_default();

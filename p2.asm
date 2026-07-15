@@ -1,11 +1,11 @@
 lea data
-mov d,a
+mov dx,ax
 loop:
-    ld d
-    test a
+    ld dx
+    test ax
     jz done
-    int 1
-    inc d
+    int 10h
+    inc dx
     jmp loop
 done:
     hlt
@@ -18,4 +18,3 @@ data:
     db 'm'
     db 'e'
     db 0
-
