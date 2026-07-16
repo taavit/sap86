@@ -1,6 +1,9 @@
 use std::fs::read_to_string;
 
-use crate::{compiler::compile_program, registers::{Register16, Registers}};
+use crate::{
+    compiler::compile_program,
+    registers::{Register16, Registers},
+};
 
 mod compiler;
 mod registers;
@@ -21,10 +24,10 @@ enum Op {
     Dec { dst: Register16 },
     Inc { dst: Register16 },
     Ldi { imm: u8 },
-    Lea { addr: u8 },
-    Jnz { addr: u8 },
-    Jz { addr: u8 },
-    Jmp { addr: u8 },
+    Lea { addr: u16 },
+    Jnz { addr: u16 },
+    Jz { addr: u16 },
+    Jmp { addr: u16 },
     Ld { src: Register16 },
     Test { src: Register16 },
     Mov { src: Register16, dst: Register16 },
@@ -109,7 +112,7 @@ impl Cpu {
                 imm: machine.read_u8(self),
             },
             0x11 => Op::Lea {
-                addr: machine.read_u8(self),
+                addr: machine.read_u16(self),
             },
             0x20..=0x2F => {
                 let src = match (v & 0x0C) >> 2 {
@@ -139,13 +142,13 @@ impl Cpu {
                 Op::Dec { dst }
             }
             0x50 => Op::Jnz {
-                addr: machine.read_u8(self),
+                addr: machine.read_u16(self),
             },
             0x51 => Op::Jz {
-                addr: machine.read_u8(self),
+                addr: machine.read_u16(self),
             },
             0x52 => Op::Jmp {
-                addr: machine.read_u8(self),
+                addr: machine.read_u16(self),
             },
             0x60..=0x63 => {
                 let src = match v & 0x03 {
@@ -180,7 +183,9 @@ struct Memory {
 
 impl Memory {
     pub fn new() -> Self {
-        Self { memory: [0; u16::MAX as usize] }
+        Self {
+            memory: [0; u16::MAX as usize],
+        }
     }
 
     pub fn read_u8(&self, addr: u16) -> u8 {
@@ -208,6 +213,13 @@ impl Machine {
         let r = self.memory.read_u8(cpu.registers.ip());
         cpu.registers.step_ip();
         r
+    }
+
+    pub fn read_u16(&mut self, cpu: &mut Cpu) -> u16 {
+        let l = self.read_u8(cpu);
+        let h = self.read_u8(cpu);
+
+        u16::from_le_bytes([l, h])
     }
 }
 

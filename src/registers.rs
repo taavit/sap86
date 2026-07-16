@@ -12,10 +12,7 @@ impl Default for Registers {
 
 impl Registers {
     pub fn new() -> Self {
-        Self {
-            gpr: [0; 8],
-            ip: 0,
-        }
+        Self { gpr: [0; 8], ip: 0 }
     }
 }
 
@@ -43,7 +40,8 @@ impl Registers {
         if (reg as usize) < 4 {
             self.gpr[reg as usize] = (self.gpr[reg as usize] & 0xFF00) | value as u16
         } else {
-            self.gpr[reg as usize - 4] = (self.gpr[reg as usize - 4] & 0x00FF) | ((value as u16) << 8)
+            self.gpr[reg as usize - 4] =
+                (self.gpr[reg as usize - 4] & 0x00FF) | ((value as u16) << 8)
         }
     }
 
@@ -111,7 +109,6 @@ impl From<u8> for Register8 {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

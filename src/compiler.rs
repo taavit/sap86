@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 #[derive(Debug, Default)]
 struct LabelMatch {
-    target: Option<u8>,
-    places: Vec<u8>,
+    target: Option<u16>,
+    places: Vec<u16>,
 }
 
-fn decode_register(r: &str) -> u8 {
+fn parse_register(r: &str) -> u8 {
     match r.trim() {
         "ax" => 0,
         "cx" => 1,
@@ -29,6 +29,28 @@ fn parse_argument(arg: &str) -> u8 {
     }
 }
 
+pub struct ModRm {
+    mode: u8,
+    reg: u8,
+    rm: u8,
+}
+
+impl From<u8> for ModRm {
+    fn from(value: u8) -> Self {
+        Self {
+            mode: value >> 6,
+            reg: (value >> 3) & 0x7,
+            rm: value & 0x07,
+        }
+    }
+}
+
+impl From<ModRm> for u8 {
+    fn from(value: ModRm) -> Self {
+        (value.mode << 6) | (value.reg << 3) | value.rm
+    }
+}
+
 pub fn compile_program(program: &str) -> Vec<u8> {
     let mut res = Vec::new();
     let mut labels: HashMap<String, LabelMatch> = HashMap::new();
@@ -40,7 +62,7 @@ pub fn compile_program(program: &str) -> Vec<u8> {
             }
             RawToken::Token(token) => {
                 if let Some(l) = token.strip_suffix(':') {
-                    labels.entry(l.to_string()).or_default().target = Some(res.len() as u8);
+                    labels.entry(l.to_string()).or_default().target = Some(res.len() as u16);
                     continue;
                 }
                 match token.as_str() {
@@ -50,7 +72,8 @@ pub fn compile_program(program: &str) -> Vec<u8> {
                         };
                         res.push(0x11);
                         let entry = labels.entry(dest.trim().to_string()).or_default();
-                        entry.places.push(res.len() as u8);
+                        entry.places.push(res.len() as u16);
+                        res.push(0);
                         res.push(0);
                     }
                     "mov" => {
@@ -60,22 +83,22 @@ pub fn compile_program(program: &str) -> Vec<u8> {
                         let Some(RawToken::Token(reg2)) = parsed.next() else {
                             panic!("Missing argument 2");
                         };
-                        let dst = decode_register(&reg1);
-                        let src = decode_register(&reg2) << 2;
+                        let dst = parse_register(&reg1);
+                        let src = parse_register(&reg2) << 2;
                         res.push(0x20 + dst + src);
                     }
                     "ld" => {
                         let Some(RawToken::Token(reg1)) = parsed.next() else {
                             panic!("Missing argument 1");
                         };
-                        let dst = decode_register(&reg1);
+                        let dst = parse_register(&reg1);
                         res.push(0x60 + dst)
                     }
                     "test" => {
                         let Some(RawToken::Token(reg1)) = parsed.next() else {
                             panic!("Missing argument 1");
                         };
-                        let dst = decode_register(&reg1);
+                        let dst = parse_register(&reg1);
                         res.push(0x70 + dst)
                     }
                     "jz" => {
@@ -84,7 +107,8 @@ pub fn compile_program(program: &str) -> Vec<u8> {
                         };
                         let entry = labels.entry(arg1).or_default();
                         res.push(0x51);
-                        entry.places.push(res.len() as u8);
+                        entry.places.push(res.len() as u16);
+                        res.push(0);
                         res.push(0);
                     }
                     "int" => {
@@ -103,7 +127,7 @@ pub fn compile_program(program: &str) -> Vec<u8> {
                         let Some(RawToken::Token(arg1)) = parsed.next() else {
                             panic!("Missing argument 1");
                         };
-                        let dst = decode_register(&arg1);
+                        let dst = parse_register(&arg1);
                         res.push(0x40 + dst);
                     }
                     "jmp" => {
@@ -112,7 +136,8 @@ pub fn compile_program(program: &str) -> Vec<u8> {
                         };
                         res.push(0x52);
                         let entry = labels.entry(arg1).or_default();
-                        entry.places.push(res.len() as u8);
+                        entry.places.push(res.len() as u16);
+                        res.push(0);
                         res.push(0);
                     }
                     "hlt" => {
@@ -152,7 +177,8 @@ pub fn compile_program(program: &str) -> Vec<u8> {
     for (label, position) in labels.drain() {
         if let Some(target) = position.target {
             for place in position.places {
-                res[place as usize] = target;
+                res[place as usize] = (target & 0x00FF) as u8;
+                res[place as usize + 1] = (target >> 8) as u8;
             }
         } else {
             panic!("Label {label} not found");
