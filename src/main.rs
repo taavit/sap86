@@ -1,8 +1,8 @@
 use std::fs::read_to_string;
 
 use crate::{
-    compiler::compile_program,
-    registers::{Register16, Registers},
+    compiler::{ModRm, Operand, compile_program},
+    registers::{Register8, Register16, Registers},
 };
 
 mod compiler;
@@ -29,8 +29,8 @@ enum Op {
     Jz { addr: u16 },
     Jmp { addr: u16 },
     Ld { src: Register16 },
-    Test { src: Register16 },
-    Mov { src: Register16, dst: Register16 },
+    Test { op1: Operand, op2: Operand },
+    Mov { src: Operand, dst: Operand },
     Int(u8),
     Halt,
 }
@@ -50,10 +50,10 @@ impl Cpu {
                 self.halted = true;
             }
             Op::Lea { addr } => {
-                self.registers.write_u16(Register16::Ax, addr as u16);
+                self.registers.write_u16(Register16::Ax, addr);
             }
             Op::Ldi { imm } => {
-                self.registers.write_u16(Register16::Ax, imm as u16);
+                self.registers.write_u8(Register8::Al, imm);
             }
             Op::Dec { dst } => {
                 let dst_val = self.registers.read_u16(dst);
@@ -69,29 +69,47 @@ impl Cpu {
             }
             Op::Jnz { addr } => {
                 if !self.flags.zero {
-                    self.registers.set_ip(addr as u16);
+                    self.registers.set_ip(addr);
                 }
             }
             Op::Jz { addr } => {
                 if self.flags.zero {
-                    self.registers.set_ip(addr as u16);
+                    self.registers.set_ip(addr);
                 }
             }
             Op::Jmp { addr } => {
-                self.registers.set_ip(addr as u16);
+                self.registers.set_ip(addr);
             }
-            Op::Test { src } => {
-                self.flags.zero = self.registers.read_u16(src) == 0;
-            }
+            Op::Test { op1, op2 } => match (op1, op2) {
+                (Operand::Register16(reg1), Operand::Register16(reg2)) => {
+                    let val1 = self.registers.read_u16(reg1);
+                    let val2 = self.registers.read_u16(reg2);
+                    self.flags.zero = (val1 & val2) == 0;
+                }
+                (Operand::Register8(reg1), Operand::Register8(reg2)) => {
+                    let val1 = self.registers.read_u8(reg1);
+                    let val2 = self.registers.read_u8(reg2);
+                    self.flags.zero = (val1 & val2) == 0;
+                }
+                _ => panic!("Invalid combination"),
+            },
             Op::Ld { src } => {
                 let addr = self.registers.read_u16(src);
                 let value = machine.memory.read_u8(addr);
                 self.registers.write_u16(Register16::Ax, value as u16);
             }
-            Op::Mov { dst, src } => {
-                let v = self.registers.read_u16(src);
-                self.registers.write_u16(dst, v);
-            }
+            Op::Mov { dst, src } => match (dst, src) {
+                (Operand::Register16(reg1), Operand::Register16(reg2)) => {
+                    let v = self.registers.read_u16(reg2);
+                    self.registers.write_u16(reg1, v);
+                }
+                (Operand::Register16(reg1), Operand::MemoryBx) => {
+                    let addr = self.registers.read_u16(Register16::Bx);
+                    let v = machine.memory.read_u16(addr);
+                    self.registers.write_u16(reg1, v);
+                }
+                _ => panic!("Invalid combination"),
+            },
             Op::Int(int) => match int {
                 0x10 => {
                     print!("{}", self.registers.read_u16(Register16::Ax) as u8 as char);
@@ -111,25 +129,23 @@ impl Cpu {
             0x10 => Op::Ldi {
                 imm: machine.read_u8(self),
             },
-            0x11 => Op::Lea {
+            0x8D => Op::Lea {
                 addr: machine.read_u16(self),
             },
-            0x20..=0x2F => {
-                let src = match (v & 0x0C) >> 2 {
-                    0 => Register16::Ax,
-                    1 => Register16::Cx,
-                    2 => Register16::Dx,
-                    3 => Register16::Bx,
-                    _ => unreachable!(),
-                };
-                let dst = match v & 0x03 {
-                    0 => Register16::Ax,
-                    1 => Register16::Cx,
-                    2 => Register16::Dx,
-                    3 => Register16::Bx,
-                    _ => unreachable!(),
-                };
-                Op::Mov { src, dst }
+            0x8B => {
+                let modrm: ModRm = machine.read_u8(self).into();
+                let dst = Register16::from(modrm.reg).into();
+                match modrm.mode {
+                    0x03 => Op::Mov {
+                        src: Register16::from(modrm.rm).into(),
+                        dst,
+                    },
+                    0x00 => Op::Mov {
+                        src: Operand::MemoryBx,
+                        dst,
+                    },
+                    _ => panic!("Unhandled mode"),
+                }
             }
             0xCD => Op::Int(machine.read_u8(self)),
             0xCC => Op::Int(0x03),
@@ -160,15 +176,25 @@ impl Cpu {
                 };
                 Op::Ld { src }
             }
-            0x70..=0x73 => {
-                let src = match v & 0x03 {
-                    0 => Register16::Ax,
-                    1 => Register16::Cx,
-                    2 => Register16::Dx,
-                    3 => Register16::Bx,
-                    _ => unreachable!(),
-                };
-                Op::Test { src }
+            0x84 => {
+                let modrm: ModRm = machine.read_u8(self).into();
+                match modrm.mode {
+                    0x03 => Op::Test {
+                        op1: Register8::from(modrm.reg).into(),
+                        op2: Register8::from(modrm.rm).into(),
+                    },
+                    _ => panic!("Invalid mod"),
+                }
+            }
+            0x85 => {
+                let modrm: ModRm = machine.read_u8(self).into();
+                match modrm.mode {
+                    0x03 => Op::Test {
+                        op1: Register16::from(modrm.reg).into(),
+                        op2: Register16::from(modrm.rm).into(),
+                    },
+                    _ => panic!("Invalid mod: {:?}", modrm),
+                }
             }
             0xF4 => Op::Halt,
             i => panic!("Unkown command: {i}"),
@@ -190,6 +216,9 @@ impl Memory {
 
     pub fn read_u8(&self, addr: u16) -> u8 {
         self.memory[addr as usize]
+    }
+    pub fn read_u16(&self, addr: u16) -> u16 {
+        u16::from_le_bytes([self.memory[addr as usize], self.memory[addr as usize]])
     }
 
     pub fn load_program(&mut self, program: &[u8]) {

@@ -1,11 +1,11 @@
 lea data
-mov dx,ax
+mov bx,ax
 loop:
-    ld dx
-    test ax
+    mov ax,[bx]
+    test ax,ax
     jz done
     int 10h
-    inc dx
+    inc bx
     jmp loop
 done:
     hlt
