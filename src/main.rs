@@ -119,7 +119,11 @@ impl Cpu {
             },
             Op::Int(int) => match int {
                 0x10 => {
-                    print!("{}", self.registers.read_u8(Register8::Al) as char);
+                    let op = self.registers.read_u8(Register8::Ah);
+                    match op {
+                        0x0E => print!("{}", self.registers.read_u8(Register8::Al) as char),
+                        _ => panic!("Unhandled interrupt {:02X}:{:02X}", int, op),
+                    }
                 }
                 _ => {
                     panic!("Invalid interrupt");

@@ -1,4 +1,4 @@
-mov ah,0ah
+mov ah,0eh
 mov al,72
 int 10h
 mov al,101

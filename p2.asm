@@ -1,6 +1,6 @@
 lea data
 mov bx,ax
-mov ah,0ah
+mov ah,0eh
 loop:
     mov al,[bx]
     test al,al
