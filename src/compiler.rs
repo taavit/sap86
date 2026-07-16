@@ -140,8 +140,6 @@ impl Instruction {
                 writer.write(&[0x8D, splited[0], splited[1]])
             }
             Self::Mov { dest, src } => {
-                // let dst = *dest as u8;
-                // let src = (*src as u8) << 2;
                 match (dest, src) {
                     (Operand::Register16(reg1), Operand::Register16(reg2)) => {
                         writer.write(&[0x8B, ModRm::new(3, *reg1 as u8, *reg2 as u8).into()])
