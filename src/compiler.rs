@@ -16,6 +16,8 @@ pub enum Operand {
     Register16(Register16),
     Register8(Register8),
     MemoryBx,
+    Imm8(u8),
+    Imm16(u16),
 }
 
 impl From<Register8> for Operand {
@@ -64,7 +66,24 @@ fn parse_operand(r: &str) -> Operand {
         "bh" => Register8::Bh.into(),
         "bl" => Register8::Bl.into(),
         "[bx]" => Operand::MemoryBx,
-        _ => panic!("Unknown operand"),
+        _ => {
+            if let Some(v) = r.strip_suffix('h') {
+                let v = u16::from_str_radix(v, 16).unwrap();
+                if v > u8::MAX.into() {
+                    Operand::Imm16(v)
+                } else {
+                    Operand::Imm8(v as u8)
+                }
+            } else if let Ok(v) = r.parse() {
+                if v > u8::MAX.into() {
+                    Operand::Imm16(v)
+                } else {
+                    Operand::Imm8(v as u8)
+                }
+            } else {
+                panic!("Unknown operand")
+            }
+        }
     }
 }
 
@@ -148,6 +167,17 @@ impl Instruction {
                 }
                 (Operand::Register8(reg1), Operand::MemoryBx) => {
                     writer.write(&[0x8A, ModRm::new(0, *reg1 as u8, 7).into()])
+                }
+                (Operand::Register8(reg1), Operand::Imm8(v)) => {
+                    writer.write(&[0xB0 + *reg1 as u8, *v])
+                }
+                (Operand::Register16(reg1), Operand::Imm16(v)) => {
+                    let b = v.to_le_bytes();
+                    writer.write(&[0xB8 + *reg1 as u8, b[0], b[1]])
+                }
+                (Operand::Register16(reg1), Operand::Imm8(v)) => {
+                    let b = (*v as u16).to_le_bytes();
+                    writer.write(&[0xB8 + *reg1 as u8, b[0], b[1]])
                 }
                 _ => panic!("Invalid combination"),
             },
@@ -259,13 +289,6 @@ pub fn compile_program(program: &str) -> Vec<u8> {
                     }
                     "hlt" => {
                         Instruction::Halt.write(&mut res).unwrap();
-                    }
-                    "ldi" => {
-                        let Some(RawToken::Token(arg1)) = parsed.next() else {
-                            panic!("Missing argument 1");
-                        };
-                        res.push(0x10);
-                        res.push(parse_argument(&arg1));
                     }
                     "db" => {
                         for db in parsed.by_ref() {

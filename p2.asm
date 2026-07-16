@@ -1,8 +1,9 @@
 lea data
 mov bx,ax
+mov ah,0ah
 loop:
     mov al,[bx]
-    test ax,ax
+    test al,al
     jz done
     int 10h
     inc bx

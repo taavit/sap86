@@ -1,10 +1,11 @@
-ldi 72
+mov ah,0ah
+mov al,72
 int 10h
-ldi 101
+mov al,101
 int 10h
-ldi 108
+mov al,108
 int 10h
 int 10h
-ldi 111
+mov al,111
 int 10h
 hlt

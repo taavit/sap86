@@ -23,7 +23,6 @@ enum Op {
     Nop,
     Dec { dst: Register16 },
     Inc { dst: Register16 },
-    Ldi { imm: u8 },
     Lea { addr: u16 },
     Jnz { addr: u16 },
     Jz { addr: u16 },
@@ -51,9 +50,6 @@ impl Cpu {
             }
             Op::Lea { addr } => {
                 self.registers.write_u16(Register16::Ax, addr);
-            }
-            Op::Ldi { imm } => {
-                self.registers.write_u8(Register8::Al, imm);
             }
             Op::Dec { dst } => {
                 let dst_val = self.registers.read_u16(dst);
@@ -113,6 +109,12 @@ impl Cpu {
                     let v = machine.memory.read_u8(addr);
                     self.registers.write_u8(reg1, v);
                 }
+                (Operand::Register8(reg1), Operand::Imm8(v)) => {
+                    self.registers.write_u8(reg1, v);
+                }
+                (Operand::Register16(reg1), Operand::Imm16(v)) => {
+                    self.registers.write_u16(reg1, v);
+                }
                 _ => panic!("Invalid combination"),
             },
             Op::Int(int) => match int {
@@ -131,9 +133,6 @@ impl Cpu {
         let v = machine.read_u8(self);
         match v {
             0x00 => Op::Nop,
-            0x10 => Op::Ldi {
-                imm: machine.read_u8(self),
-            },
             0x8D => Op::Lea {
                 addr: machine.read_u16(self),
             },
@@ -165,6 +164,22 @@ impl Cpu {
                         dst,
                     },
                     _ => panic!("Unhandled mode"),
+                }
+            }
+            0xB0..=0xB7 => {
+                let imm = machine.read_u8(self);
+                let reg = Register8::from(v & 7);
+                Op::Mov {
+                    src: Operand::Imm8(imm),
+                    dst: reg.into(),
+                }
+            }
+            0xB8..=0xBF => {
+                let imm = machine.read_u16(self);
+                let reg = Register16::from(v & 7);
+                Op::Mov {
+                    src: Operand::Imm16(imm),
+                    dst: reg.into(),
                 }
             }
             0xCD => Op::Int(machine.read_u8(self)),
