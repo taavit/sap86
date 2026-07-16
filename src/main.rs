@@ -108,11 +108,16 @@ impl Cpu {
                     let v = machine.memory.read_u16(addr);
                     self.registers.write_u16(reg1, v);
                 }
+                (Operand::Register8(reg1), Operand::MemoryBx) => {
+                    let addr = self.registers.read_u16(Register16::Bx);
+                    let v = machine.memory.read_u8(addr);
+                    self.registers.write_u8(reg1, v);
+                }
                 _ => panic!("Invalid combination"),
             },
             Op::Int(int) => match int {
                 0x10 => {
-                    print!("{}", self.registers.read_u16(Register16::Ax) as u8 as char);
+                    print!("{}", self.registers.read_u8(Register8::Al) as char);
                 }
                 _ => {
                     panic!("Invalid interrupt");
@@ -132,6 +137,21 @@ impl Cpu {
             0x8D => Op::Lea {
                 addr: machine.read_u16(self),
             },
+            0x8A => {
+                let modrm: ModRm = machine.read_u8(self).into();
+                let dst = Register8::from(modrm.reg).into();
+                match modrm.mode {
+                    0x03 => Op::Mov {
+                        src: Register8::from(modrm.rm).into(),
+                        dst,
+                    },
+                    0x00 => Op::Mov {
+                        src: Operand::MemoryBx,
+                        dst,
+                    },
+                    _ => panic!("Unhandled mode"),
+                }
+            }
             0x8B => {
                 let modrm: ModRm = machine.read_u8(self).into();
                 let dst = Register16::from(modrm.reg).into();
@@ -218,7 +238,7 @@ impl Memory {
         self.memory[addr as usize]
     }
     pub fn read_u16(&self, addr: u16) -> u16 {
-        u16::from_le_bytes([self.memory[addr as usize], self.memory[addr as usize]])
+        u16::from_le_bytes([self.memory[addr as usize], self.memory[addr as usize + 1]])
     }
 
     pub fn load_program(&mut self, program: &[u8]) {

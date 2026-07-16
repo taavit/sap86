@@ -1,7 +1,7 @@
 lea data
 mov bx,ax
 loop:
-    mov ax,[bx]
+    mov al,[bx]
     test ax,ax
     jz done
     int 10h

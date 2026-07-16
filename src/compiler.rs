@@ -139,17 +139,18 @@ impl Instruction {
                 let splited = address.to_le_bytes();
                 writer.write(&[0x8D, splited[0], splited[1]])
             }
-            Self::Mov { dest, src } => {
-                match (dest, src) {
-                    (Operand::Register16(reg1), Operand::Register16(reg2)) => {
-                        writer.write(&[0x8B, ModRm::new(3, *reg1 as u8, *reg2 as u8).into()])
-                    }
-                    (Operand::Register16(reg1), Operand::MemoryBx) => {
-                        writer.write(&[0x8B, ModRm::new(0, *reg1 as u8, 7).into()])
-                    }
-                    _ => panic!("Invalid combination"),
+            Self::Mov { dest, src } => match (dest, src) {
+                (Operand::Register16(reg1), Operand::Register16(reg2)) => {
+                    writer.write(&[0x8B, ModRm::new(3, *reg1 as u8, *reg2 as u8).into()])
                 }
-            }
+                (Operand::Register16(reg1), Operand::MemoryBx) => {
+                    writer.write(&[0x8B, ModRm::new(0, *reg1 as u8, 7).into()])
+                }
+                (Operand::Register8(reg1), Operand::MemoryBx) => {
+                    writer.write(&[0x8A, ModRm::new(0, *reg1 as u8, 7).into()])
+                }
+                _ => panic!("Invalid combination"),
+            },
             Self::Test { operand1, operand2 } => match (operand1, operand2) {
                 (Operand::Register16(reg1), Operand::Register16(reg2)) => {
                     writer.write(&[0x85, ModRm::new(3, *reg1 as u8, *reg2 as u8).into()])
