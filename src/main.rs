@@ -1,34 +1,10 @@
 use std::fs::read_to_string;
 
-use crate::compiler::compile_program;
+use crate::{compiler::compile_program, registers::{Register16, Registers}};
 
 mod compiler;
+mod registers;
 
-struct Registers {
-    gpr: [u8; 16],
-    ip: u8,
-}
-
-impl Registers {
-    pub fn step_ip(&mut self) {
-        self.ip = self.ip.wrapping_add(1);
-    }
-
-    pub fn ip(&self) -> u8 {
-        self.ip
-    }
-
-    pub fn set_ip(&mut self, ip: u8) {
-        self.ip = ip;
-    }
-
-    pub fn write_u8(&mut self, reg: Register16, value: u8) {
-        self.gpr[reg as usize] = value;
-    }
-    pub fn read_u8(&self, reg: Register16) -> u8 {
-        self.gpr[reg as usize]
-    }
-}
 struct Flags {
     zero: bool,
 }
@@ -37,34 +13,6 @@ struct Cpu {
     flags: Flags,
     registers: Registers,
     halted: bool,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum Register16 {
-    Ax,
-    Cx,
-    Dx,
-    Bx,
-    Sp,
-    Bp,
-    Si,
-    Di,
-}
-
-impl From<u8> for Register16 {
-    fn from(value: u8) -> Self {
-        match value {
-            0 => Register16::Ax,
-            1 => Register16::Cx,
-            2 => Register16::Dx,
-            3 => Register16::Bx,
-            4 => Register16::Sp,
-            5 => Register16::Bp,
-            6 => Register16::Si,
-            7 => Register16::Di,
-            _ => panic!("Invalid value"),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -88,7 +36,7 @@ impl Cpu {
     pub fn new() -> Self {
         Self {
             flags: Flags { zero: false },
-            registers: Registers { gpr: [0; 16], ip: 0 },
+            registers: Registers::new(),
             halted: false,
         }
     }
@@ -99,51 +47,51 @@ impl Cpu {
                 self.halted = true;
             }
             Op::Lea { addr } => {
-                self.registers.write_u8(Register16::Ax, addr);
+                self.registers.write_u16(Register16::Ax, addr as u16);
             }
             Op::Ldi { imm } => {
-                self.registers.write_u8(Register16::Ax, imm);
+                self.registers.write_u16(Register16::Ax, imm as u16);
             }
             Op::Dec { dst } => {
-                let dst_val = self.registers.read_u8(dst);
+                let dst_val = self.registers.read_u16(dst);
                 let new_val = dst_val.wrapping_sub(1);
-                self.registers.write_u8(dst, new_val);
+                self.registers.write_u16(dst, new_val);
                 self.flags.zero = new_val == 0;
             }
             Op::Inc { dst } => {
-                let dst_val = self.registers.read_u8(dst);
+                let dst_val = self.registers.read_u16(dst);
                 let new_val = dst_val.wrapping_add(1);
-                self.registers.write_u8(dst, new_val);
+                self.registers.write_u16(dst, new_val);
                 self.flags.zero = new_val == 0;
             }
             Op::Jnz { addr } => {
                 if !self.flags.zero {
-                    self.registers.set_ip(addr);
+                    self.registers.set_ip(addr as u16);
                 }
             }
             Op::Jz { addr } => {
                 if self.flags.zero {
-                    self.registers.set_ip(addr);
+                    self.registers.set_ip(addr as u16);
                 }
             }
             Op::Jmp { addr } => {
-                self.registers.set_ip(addr);
+                self.registers.set_ip(addr as u16);
             }
             Op::Test { src } => {
-                self.flags.zero = self.registers.read_u8(src) == 0;
+                self.flags.zero = self.registers.read_u16(src) == 0;
             }
             Op::Ld { src } => {
-                let addr = self.registers.read_u8(src);
+                let addr = self.registers.read_u16(src);
                 let value = machine.memory.read_u8(addr);
-                self.registers.write_u8(Register16::Ax, value);
+                self.registers.write_u16(Register16::Ax, value as u16);
             }
             Op::Mov { dst, src } => {
-                let v = self.registers.read_u8(src);
-                self.registers.write_u8(dst, v);
+                let v = self.registers.read_u16(src);
+                self.registers.write_u16(dst, v);
             }
             Op::Int(int) => match int {
                 0x10 => {
-                    print!("{}", self.registers.read_u8(Register16::Ax) as char);
+                    print!("{}", self.registers.read_u16(Register16::Ax) as u8 as char);
                 }
                 _ => {
                     panic!("Invalid interrupt");
@@ -187,7 +135,7 @@ impl Cpu {
                 Op::Inc { dst }
             }
             0x48..=0x4F => {
-                let dst = Register16::from(v& 0x07);
+                let dst = Register16::from(v & 0x07);
                 Op::Dec { dst }
             }
             0x50 => Op::Jnz {
@@ -227,15 +175,15 @@ impl Cpu {
 
 #[derive(Debug)]
 struct Memory {
-    memory: [u8; 256],
+    memory: [u8; u16::MAX as usize],
 }
 
 impl Memory {
     pub fn new() -> Self {
-        Self { memory: [0; 256] }
+        Self { memory: [0; u16::MAX as usize] }
     }
 
-    pub fn read_u8(&self, addr: u8) -> u8 {
+    pub fn read_u8(&self, addr: u16) -> u8 {
         self.memory[addr as usize]
     }
 
