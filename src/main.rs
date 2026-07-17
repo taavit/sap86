@@ -2,15 +2,16 @@ use std::fs::read_to_string;
 
 use crate::{
     compiler::{ModRm, Operand, compile_program},
-    registers::{Register8, Register16, Registers},
+    emulator::bios::Bios,
+    isa::{
+        flags::Flags,
+        registers::{Register8, Register16, Registers},
+    },
 };
 
 mod compiler;
-mod registers;
-
-struct Flags {
-    zero: bool,
-}
+mod emulator;
+mod isa;
 
 struct Cpu {
     flags: Flags,
@@ -117,18 +118,7 @@ impl Cpu {
                 }
                 _ => panic!("Invalid combination"),
             },
-            Op::Int(int) => match int {
-                0x10 => {
-                    let op = self.registers.read_u8(Register8::Ah);
-                    match op {
-                        0x0E => print!("{}", self.registers.read_u8(Register8::Al) as char),
-                        _ => panic!("Unhandled interrupt {:02X}:{:02X}", int, op),
-                    }
-                }
-                _ => {
-                    panic!("Invalid interrupt");
-                }
-            },
+            Op::Int(int) => Bios::handle_interrupt(int, self),
             Op::Nop => {}
         }
     }

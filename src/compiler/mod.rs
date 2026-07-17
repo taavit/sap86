@@ -3,7 +3,12 @@ use std::{
     io::{self, Write},
 };
 
-use crate::registers::{Register8, Register16};
+use crate::{
+    compiler::tokenizer::{RawToken, tokenize},
+    isa::registers::{Register8, Register16},
+};
+
+mod tokenizer;
 
 #[derive(Debug, Default)]
 struct LabelMatch {
@@ -32,59 +37,67 @@ impl From<Register16> for Operand {
     }
 }
 
-fn parse_register(r: &str) -> Register16 {
+fn parse_register16(r: &str) -> Option<Register16> {
     match r.trim() {
-        "ax" => Register16::Ax,
-        "cx" => Register16::Cx,
-        "dx" => Register16::Dx,
-        "bx" => Register16::Bx,
-        "sp" => Register16::Sp,
-        "bp" => Register16::Bp,
-        "si" => Register16::Si,
-        "di" => Register16::Di,
-        _ => panic!("Invalid register"),
+        "ax" => Some(Register16::Ax),
+        "cx" => Some(Register16::Cx),
+        "dx" => Some(Register16::Dx),
+        "bx" => Some(Register16::Bx),
+        "sp" => Some(Register16::Sp),
+        "bp" => Some(Register16::Bp),
+        "si" => Some(Register16::Si),
+        "di" => Some(Register16::Di),
+        _ => None,
     }
 }
 
-fn parse_operand(r: &str) -> Operand {
+fn parse_register8(r: &str) -> Option<Register8> {
     match r.trim() {
-        "ax" => Register16::Ax.into(),
-        "cx" => Register16::Cx.into(),
-        "dx" => Register16::Dx.into(),
-        "bx" => Register16::Bx.into(),
-        "sp" => Register16::Sp.into(),
-        "bp" => Register16::Bp.into(),
-        "si" => Register16::Si.into(),
-        "di" => Register16::Di.into(),
-
-        "ah" => Register8::Ah.into(),
-        "al" => Register8::Al.into(),
-        "ch" => Register8::Ch.into(),
-        "cl" => Register8::Cl.into(),
-        "dh" => Register8::Dh.into(),
-        "dl" => Register8::Dl.into(),
-        "bh" => Register8::Bh.into(),
-        "bl" => Register8::Bl.into(),
-        "[bx]" => Operand::MemoryBx,
-        _ => {
-            if let Some(v) = r.strip_suffix('h') {
-                let v = u16::from_str_radix(v, 16).unwrap();
-                if v > u8::MAX.into() {
-                    Operand::Imm16(v)
-                } else {
-                    Operand::Imm8(v as u8)
-                }
-            } else if let Ok(v) = r.parse() {
-                if v > u8::MAX.into() {
-                    Operand::Imm16(v)
-                } else {
-                    Operand::Imm8(v as u8)
-                }
-            } else {
-                panic!("Unknown operand")
-            }
-        }
+        "al" => Some(Register8::Al),
+        "cl" => Some(Register8::Cl),
+        "dl" => Some(Register8::Dl),
+        "bl" => Some(Register8::Bl),
+        "ah" => Some(Register8::Ah),
+        "ch" => Some(Register8::Ch),
+        "dh" => Some(Register8::Dh),
+        "bh" => Some(Register8::Bh),
+        _ => None,
     }
+}
+
+fn parse_memory(r: &str) -> Option<Operand> {
+    if r == "[bx]" {
+        Some(Operand::MemoryBx)
+    } else {
+        None
+    }
+}
+
+fn parse_number(r: &str) -> Option<Operand> {
+    if let Some(v) = r.strip_suffix('h') {
+        let v = u16::from_str_radix(v, 16).unwrap();
+        if v > u8::MAX.into() {
+            Some(Operand::Imm16(v))
+        } else {
+            Some(Operand::Imm8(v as u8))
+        }
+    } else if let Ok(v) = r.parse() {
+        if v > u8::MAX.into() {
+            Some(Operand::Imm16(v))
+        } else {
+            Some(Operand::Imm8(v as u8))
+        }
+    } else {
+        None
+    }
+}
+
+fn parse_operand(r: &str) -> Option<Operand> {
+    parse_register8(r)
+        .map(Operand::from)
+        .or_else(|| parse_register16(r).map(Operand::from))
+        .or_else(|| parse_memory(r))
+        .or_else(|| parse_number(r))
 }
 
 fn parse_argument(arg: &str) -> u8 {
@@ -226,15 +239,15 @@ pub fn compile_program(program: &str) -> Vec<u8> {
                         let Some(RawToken::Token(reg2)) = parsed.next() else {
                             panic!("Missing argument 2");
                         };
-                        let dest = parse_operand(&reg1);
-                        let src = parse_operand(&reg2);
+                        let dest = parse_operand(&reg1).unwrap();
+                        let src = parse_operand(&reg2).unwrap();
                         Instruction::Mov { dest, src }.write(&mut res).unwrap();
                     }
                     "ld" => {
                         let Some(RawToken::Token(reg1)) = parsed.next() else {
                             panic!("Missing argument 1");
                         };
-                        let dst = parse_register(&reg1);
+                        let dst = parse_register16(&reg1).unwrap();
                         res.push(0x60 + dst as u8)
                     }
                     "test" => {
@@ -244,8 +257,8 @@ pub fn compile_program(program: &str) -> Vec<u8> {
                         let Some(RawToken::Token(reg2)) = parsed.next() else {
                             panic!("Missing argument 1");
                         };
-                        let reg1 = parse_operand(&reg1);
-                        let reg2 = parse_operand(&reg2);
+                        let reg1 = parse_operand(&reg1).unwrap();
+                        let reg2 = parse_operand(&reg2).unwrap();
                         Instruction::Test {
                             operand1: reg1,
                             operand2: reg2,
@@ -274,7 +287,7 @@ pub fn compile_program(program: &str) -> Vec<u8> {
                         let Some(RawToken::Token(arg1)) = parsed.next() else {
                             panic!("Missing argument 1");
                         };
-                        let dst = parse_register(&arg1);
+                        let dst = parse_register16(&arg1).unwrap();
                         res.push(0x40 + dst as u8);
                     }
                     "jmp" => {
@@ -326,154 +339,4 @@ pub fn compile_program(program: &str) -> Vec<u8> {
     }
 
     res
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum ParserState {
-    None,
-    ReadToken,
-    ReadString,
-    ReadByte,
-    Comment,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum RawToken {
-    Token(String),
-    StringToken(String),
-    CharToken(String),
-    EndLine,
-}
-
-fn tokenize<'a>(data: impl Iterator<Item = &'a u8>) -> Vec<RawToken> {
-    let mut state = ParserState::None;
-    let mut raw_tokens: Vec<RawToken> = Vec::new();
-    let mut current_token = String::new();
-    for byte in data {
-        if state == ParserState::None {
-            if *byte == b';' {
-                state = ParserState::Comment;
-                continue;
-            }
-            if *byte == b'\r' || *byte == b'\n' {
-                state = ParserState::None;
-                raw_tokens.push(RawToken::EndLine);
-                continue;
-            }
-            if byte.is_ascii_whitespace() || *byte == b',' {
-                continue;
-            }
-            if *byte == b'"' {
-                state = ParserState::ReadString;
-                continue;
-            }
-            if *byte == b'\'' {
-                state = ParserState::ReadByte;
-                continue;
-            }
-            state = ParserState::ReadToken;
-            current_token.push(*byte as char);
-        } else if state == ParserState::ReadToken {
-            if *byte == b';' {
-                state = ParserState::Comment;
-                raw_tokens.push(RawToken::Token(current_token.clone()));
-                current_token.clear();
-                continue;
-            }
-            if *byte == b' ' || *byte == b'\t' {
-                state = ParserState::None;
-                raw_tokens.push(RawToken::Token(current_token.clone()));
-                current_token.clear();
-                continue;
-            }
-            if *byte == b',' {
-                raw_tokens.push(RawToken::Token(current_token.clone()));
-                current_token.clear();
-                continue;
-            }
-            if *byte == b'\r' || *byte == b'\n' {
-                state = ParserState::None;
-                raw_tokens.push(RawToken::Token(current_token.clone()));
-                raw_tokens.push(RawToken::EndLine);
-                current_token.clear();
-                continue;
-            }
-            current_token.push(*byte as char);
-        } else if state == ParserState::Comment && (*byte == b'\r' || *byte == b'\n') {
-            state = ParserState::None;
-            raw_tokens.push(RawToken::EndLine);
-            continue;
-        } else if state == ParserState::ReadString {
-            if *byte == b'"' {
-                state = ParserState::None;
-                raw_tokens.push(RawToken::StringToken(current_token.clone()));
-                current_token.clear();
-                continue;
-            }
-            current_token.push(*byte as char);
-        } else if state == ParserState::ReadByte {
-            if *byte == b'\'' {
-                state = ParserState::None;
-                raw_tokens.push(RawToken::CharToken(current_token.clone()));
-                current_token.clear();
-                continue;
-            }
-            current_token.push(*byte as char);
-        }
-    }
-    if !current_token.is_empty() {
-        raw_tokens.push(RawToken::Token(current_token));
-    }
-
-    raw_tokens
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::compiler::{RawToken, tokenize};
-
-    #[test]
-    fn test_tokenizer() {
-        let program = "
-        ; Tokenizer test
-        ; Test
-        lea data  ; load binary data
-        mov dx,ax ; store on data register
-        data:
-            db 'H'
-            db \"ello\",\",\"
-            db \" world!\",0
-
-        ";
-        let stream = program.as_bytes().iter();
-        assert_eq!(
-            tokenize(stream),
-            vec![
-                RawToken::EndLine,
-                RawToken::EndLine,
-                RawToken::EndLine,
-                RawToken::Token("lea".to_string()),
-                RawToken::Token("data".to_string()),
-                RawToken::EndLine,
-                RawToken::Token("mov".to_string()),
-                RawToken::Token("dx".to_string()),
-                RawToken::Token("ax".to_string()),
-                RawToken::EndLine,
-                RawToken::Token("data:".to_string()),
-                RawToken::EndLine,
-                RawToken::Token("db".to_string()),
-                RawToken::CharToken("H".to_string()),
-                RawToken::EndLine,
-                RawToken::Token("db".to_string()),
-                RawToken::StringToken("ello".to_string()),
-                RawToken::StringToken(",".to_string()),
-                RawToken::EndLine,
-                RawToken::Token("db".to_string()),
-                RawToken::StringToken(" world!".to_string()),
-                RawToken::Token("0".to_string()),
-                RawToken::EndLine,
-                RawToken::EndLine,
-            ]
-        );
-    }
 }

@@ -112,7 +112,7 @@ impl From<u8> for Register8 {
 
 #[cfg(test)]
 mod tests {
-    use crate::registers::{Register16, Registers};
+    use crate::isa::registers::{Register16, Registers};
 
     #[test]
     fn test_registers() {
