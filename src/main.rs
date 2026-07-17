@@ -1,11 +1,8 @@
 use std::fs::read_to_string;
 
 use crate::{
-    compiler::{ModRm, Operand, compile_program},
-    emulator::bios::Bios,
-    isa::{
-        flags::Flags,
-        registers::{Register8, Register16, Registers},
+    compiler::{ModRm, Operand, compile_program}, emulator::bios::Bios, isa::{
+        MemorySpec, flags::Flags, registers::{Register8, Register16, Registers},
     },
 };
 
@@ -100,12 +97,12 @@ impl Cpu {
                     let v = self.registers.read_u16(reg2);
                     self.registers.write_u16(reg1, v);
                 }
-                (Operand::Register16(reg1), Operand::MemoryBx) => {
+                (Operand::Register16(reg1), Operand::MemorySpec(MemorySpec::MemoryBx)) => {
                     let addr = self.registers.read_u16(Register16::Bx);
                     let v = machine.memory.read_u16(addr);
                     self.registers.write_u16(reg1, v);
                 }
-                (Operand::Register8(reg1), Operand::MemoryBx) => {
+                (Operand::Register8(reg1), Operand::MemorySpec(MemorySpec::MemoryBx)) => {
                     let addr = self.registers.read_u16(Register16::Bx);
                     let v = machine.memory.read_u8(addr);
                     self.registers.write_u8(reg1, v);
@@ -139,7 +136,7 @@ impl Cpu {
                         dst,
                     },
                     0x00 => Op::Mov {
-                        src: Operand::MemoryBx,
+                        src: Operand::MemorySpec(MemorySpec::MemoryBx),
                         dst,
                     },
                     _ => panic!("Unhandled mode"),
@@ -154,7 +151,7 @@ impl Cpu {
                         dst,
                     },
                     0x00 => Op::Mov {
-                        src: Operand::MemoryBx,
+                        src: Operand::MemorySpec(MemorySpec::MemoryBx),
                         dst,
                     },
                     _ => panic!("Unhandled mode"),

@@ -4,11 +4,11 @@ use std::{
 };
 
 use crate::{
-    compiler::tokenizer::{RawToken, tokenize},
-    isa::registers::{Register8, Register16},
+    compiler::tokenizer::{RawToken, tokenize}, isa::{MemorySpec, registers::{Register8, Register16}},
 };
 
 mod tokenizer;
+mod memory_operand;
 
 #[derive(Debug, Default)]
 struct LabelMatch {
@@ -20,7 +20,7 @@ struct LabelMatch {
 pub enum Operand {
     Register16(Register16),
     Register8(Register8),
-    MemoryBx,
+    MemorySpec(MemorySpec),
     Imm8(u8),
     Imm16(u16),
 }
@@ -67,7 +67,7 @@ fn parse_register8(r: &str) -> Option<Register8> {
 
 fn parse_memory(r: &str) -> Option<Operand> {
     if r == "[bx]" {
-        Some(Operand::MemoryBx)
+        Some(Operand::MemorySpec(MemorySpec::MemoryBx))
     } else {
         None
     }
@@ -138,13 +138,16 @@ impl From<ModRm> for u8 {
     }
 }
 
+
+
 pub enum Instruction {
     Halt,
     Int {
         interrupt: u8,
     },
     Lea {
-        address: u16,
+        src: Operand,
+        dest: Operand,
     },
     Mov {
         dest: Operand,
@@ -167,18 +170,29 @@ impl Instruction {
                     writer.write(&[0xCD, *interrupt])
                 }
             }
-            Self::Lea { address } => {
-                let splited = address.to_le_bytes();
-                writer.write(&[0x8D, splited[0], splited[1]])
+            Self::Lea { src, dest: Operand::Register16(reg) } => {
+                let modrm = ModRm {
+                    mode: 0,
+                    reg: *reg as u8,
+                    rm: 6
+                };
+                match src {
+                    Operand::MemorySpec(MemorySpec::Displacement(address)) => {
+                        let splited = address.to_le_bytes();
+                        writer.write(&[0x8D, modrm.into(), splited[0], splited[1]])
+                    }
+                    _ => panic!("Invalid dest"),
+                }
             }
+            Self::Lea { src: _, dest: _ } => panic!("Invalid operands"),
             Self::Mov { dest, src } => match (dest, src) {
                 (Operand::Register16(reg1), Operand::Register16(reg2)) => {
                     writer.write(&[0x8B, ModRm::new(3, *reg1 as u8, *reg2 as u8).into()])
                 }
-                (Operand::Register16(reg1), Operand::MemoryBx) => {
+                (Operand::Register16(reg1), Operand::MemorySpec(MemorySpec::MemoryBx)) => {
                     writer.write(&[0x8B, ModRm::new(0, *reg1 as u8, 7).into()])
                 }
-                (Operand::Register8(reg1), Operand::MemoryBx) => {
+                (Operand::Register8(reg1), Operand::MemorySpec(MemorySpec::MemoryBx)) => {
                     writer.write(&[0x8A, ModRm::new(0, *reg1 as u8, 7).into()])
                 }
                 (Operand::Register8(reg1), Operand::Imm8(v)) => {
@@ -228,9 +242,19 @@ pub fn compile_program(program: &str) -> Vec<u8> {
                         let Some(RawToken::Token(dest)) = parsed.next() else {
                             panic!("Missing argument");
                         };
-                        Instruction::Lea { address: 0 }.write(&mut res).unwrap();
-                        let entry = labels.entry(dest.trim().to_string()).or_default();
-                        entry.places.push(res.len() as u16 - 2);
+                        let Some(RawToken::Token(src_raw)) = parsed.next() else {
+                            panic!("Missing argument");
+                        };
+                        let src = parse_operand(&src_raw);
+                        let dest = parse_operand(&dest).unwrap();
+                        let src = if let Some(op) = src {
+                            op
+                        } else {
+                            let entry = labels.entry(src_raw).or_default();
+                            entry.places.push(res.len() as u16 + 2);
+                            Operand::MemorySpec(MemorySpec::Displacement(0))
+                        };
+                        Instruction::Lea { src, dest }.write(&mut res).unwrap();
                     }
                     "mov" => {
                         let Some(RawToken::Token(reg1)) = parsed.next() else {
