@@ -1,4 +1,4 @@
-use crate::{Cpu, isa::registers::Register8};
+use crate::{emulator::cpu::Cpu, isa::registers::Register8};
 
 pub struct Bios;
 

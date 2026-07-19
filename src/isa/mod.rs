@@ -1,6 +1,7 @@
 use crate::isa::registers::{Register8, Register16};
 
 pub mod flags;
+pub mod instructions;
 pub mod registers;
 
 #[derive(Debug)]
