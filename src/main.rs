@@ -1,17 +1,65 @@
-use std::fs::read_to_string;
+use std::{fs::File, io::Read};
 
 use crate::{
-    compiler::{ModRm, Operand, compile_program},
     emulator::bios::Bios,
     isa::{
+        EffectiveAddressBase, MemSpec, ModRm, Operand,
         flags::Flags,
         registers::{Register8, Register16, Registers},
     },
 };
 
-mod compiler;
 mod emulator;
 mod isa;
+
+fn decode_rm8(cpu: &mut Cpu, machine: &mut Machine, modrm: ModRm) -> Operand {
+    match (modrm.mode, modrm.rm) {
+        (0b00, 6) => {
+            let addr = machine.read_u16(cpu);
+            Operand::Mem8(MemSpec {
+                base: EffectiveAddressBase::None,
+                disp: addr as i16,
+                is_direct: true,
+            })
+        }
+        (0b00, _) => Operand::Mem8(MemSpec {
+            base: EffectiveAddressBase::from(modrm.rm),
+            disp: 0,
+            is_direct: false,
+        }),
+        (0b01, _) => {
+            let disp = machine.read_u8(cpu) as i8;
+            Operand::Mem8(MemSpec {
+                base: EffectiveAddressBase::from(modrm.rm),
+                disp: disp as i16,
+                is_direct: false,
+            })
+        }
+        (0b10, _) => {
+            let disp = machine.read_u16(cpu) as i16;
+            Operand::Mem8(MemSpec {
+                base: EffectiveAddressBase::from(modrm.rm),
+                is_direct: false,
+                disp,
+            })
+        }
+        (0b11, _) => Operand::Register8(Register8::from(modrm.rm)),
+        _ => unreachable!(),
+    }
+}
+
+fn decode_rm16(cpu: &mut Cpu, machine: &mut Machine, modrm: ModRm) -> Operand {
+    match modrm.mode {
+        0b11 => Operand::Register16(Register16::from(modrm.rm)),
+        _ => {
+            if let Operand::Mem8(m) = decode_rm8(cpu, machine, modrm) {
+                Operand::Mem16(m)
+            } else {
+                unreachable!()
+            }
+        }
+    }
+}
 
 struct Cpu {
     flags: Flags,
@@ -24,10 +72,10 @@ enum Op {
     Nop,
     Dec { dst: Register16 },
     Inc { dst: Register16 },
-    Lea { addr: u16 },
-    Jnz { addr: u16 },
-    Jz { addr: u16 },
-    Jmp { addr: u16 },
+    Lea { src: Operand, dst: Operand },
+    Jnz { addr: Operand },
+    Jz { addr: Operand },
+    Jmp { addr: Operand },
     Ld { src: Register16 },
     Test { op1: Operand, op2: Operand },
     Mov { src: Operand, dst: Operand },
@@ -44,13 +92,74 @@ impl Cpu {
         }
     }
 
+    fn resolve_address(&self, spec: &MemSpec) -> u16 {
+        if spec.is_direct {
+            spec.disp as u16
+        } else {
+            let base_value = match spec.base {
+                EffectiveAddressBase::BxSi => self
+                    .registers
+                    .read_u16(Register16::Bx)
+                    .wrapping_add(self.registers.read_u16(Register16::Si)),
+                EffectiveAddressBase::BxDi => self
+                    .registers
+                    .read_u16(Register16::Bx)
+                    .wrapping_add(self.registers.read_u16(Register16::Di)),
+                EffectiveAddressBase::BpSi => self
+                    .registers
+                    .read_u16(Register16::Bp)
+                    .wrapping_add(self.registers.read_u16(Register16::Si)),
+                EffectiveAddressBase::BpDi => self
+                    .registers
+                    .read_u16(Register16::Bp)
+                    .wrapping_add(self.registers.read_u16(Register16::Di)),
+
+                EffectiveAddressBase::Bx => self.registers.read_u16(Register16::Bx),
+                EffectiveAddressBase::Di => self.registers.read_u16(Register16::Di),
+                EffectiveAddressBase::Si => self.registers.read_u16(Register16::Si),
+                EffectiveAddressBase::Bp => self.registers.read_u16(Register16::Bp),
+                EffectiveAddressBase::None => 0,
+            };
+            base_value.wrapping_add(spec.disp as u16)
+        }
+    }
+
+    pub fn get_operand_value(&self, machine: &mut Machine, operand: &Operand) -> u16 {
+        match operand {
+            Operand::Register8(reg) => self.registers.read_u8(*reg) as u16,
+            Operand::Register16(reg) => self.registers.read_u16(*reg),
+            Operand::Imm8(val) => *val as u16,
+            Operand::Imm16(val) => *val,
+            Operand::Mem8(spec) => machine.memory.read_u8(self.resolve_address(spec)) as u16,
+            Operand::Mem16(spec) => machine.memory.read_u16(self.resolve_address(spec)),
+            _ => panic!("Invalid operand"),
+        }
+    }
+
+    pub fn set_operand_value(&mut self, machine: &mut Machine, operand: &Operand, value: u16) {
+        match operand {
+            Operand::Register8(reg) => self.registers.write_u8(*reg, value as u8),
+            Operand::Register16(reg) => self.registers.write_u16(*reg, value),
+            Operand::Mem8(spec) => machine
+                .memory
+                .write_u8(self.resolve_address(spec), value as u8),
+            Operand::Mem16(spec) => machine.memory.write_u16(self.resolve_address(spec), value),
+            _ => panic!("Operand read only!"),
+        }
+    }
+
     pub fn execute(&mut self, machine: &mut Machine, instruction: Op) {
         match instruction {
             Op::Halt => {
                 self.halted = true;
             }
-            Op::Lea { addr } => {
-                self.registers.write_u16(Register16::Ax, addr);
+            Op::Lea { src, dst } => {
+                let addr = match src {
+                    Operand::Mem8(spec) => self.resolve_address(&spec),
+                    Operand::Mem16(spec) => self.resolve_address(&spec),
+                    _ => panic!("Not address"),
+                };
+                self.set_operand_value(machine, &dst, addr);
             }
             Op::Dec { dst } => {
                 let dst_val = self.registers.read_u16(dst);
@@ -64,18 +173,24 @@ impl Cpu {
                 self.registers.write_u16(dst, new_val);
                 self.flags.zero = new_val == 0;
             }
-            Op::Jnz { addr } => {
+            Op::Jnz {
+                addr: Operand::RelAddress(target),
+            } => {
                 if !self.flags.zero {
-                    self.registers.set_ip(addr);
+                    self.registers.set_ip(self.resolve_relative(target));
                 }
             }
-            Op::Jz { addr } => {
+            Op::Jz {
+                addr: Operand::RelAddress(target),
+            } => {
                 if self.flags.zero {
-                    self.registers.set_ip(addr);
+                    self.registers.set_ip(self.resolve_relative(target));
                 }
             }
-            Op::Jmp { addr } => {
-                self.registers.set_ip(addr);
+            Op::Jmp {
+                addr: Operand::RelAddress(target),
+            } => {
+                self.registers.set_ip(self.resolve_relative(target));
             }
             Op::Test { op1, op2 } => match (op1, op2) {
                 (Operand::Register16(reg1), Operand::Register16(reg2)) => {
@@ -95,31 +210,13 @@ impl Cpu {
                 let value = machine.memory.read_u8(addr);
                 self.registers.write_u16(Register16::Ax, value as u16);
             }
-            Op::Mov { dst, src } => match (dst, src) {
-                (Operand::Register16(reg1), Operand::Register16(reg2)) => {
-                    let v = self.registers.read_u16(reg2);
-                    self.registers.write_u16(reg1, v);
-                }
-                (Operand::Register16(reg1), Operand::MemoryBx) => {
-                    let addr = self.registers.read_u16(Register16::Bx);
-                    let v = machine.memory.read_u16(addr);
-                    self.registers.write_u16(reg1, v);
-                }
-                (Operand::Register8(reg1), Operand::MemoryBx) => {
-                    let addr = self.registers.read_u16(Register16::Bx);
-                    let v = machine.memory.read_u8(addr);
-                    self.registers.write_u8(reg1, v);
-                }
-                (Operand::Register8(reg1), Operand::Imm8(v)) => {
-                    self.registers.write_u8(reg1, v);
-                }
-                (Operand::Register16(reg1), Operand::Imm16(v)) => {
-                    self.registers.write_u16(reg1, v);
-                }
-                _ => panic!("Invalid combination"),
-            },
+            Op::Mov { dst, src } => {
+                let value = self.get_operand_value(machine, &src);
+                self.set_operand_value(machine, &dst, value);
+            }
             Op::Int(int) => Bios::handle_interrupt(int, self),
             Op::Nop => {}
+            _ => panic!("Invalid instruction"),
         }
     }
 
@@ -127,38 +224,29 @@ impl Cpu {
         let v = machine.read_u8(self);
         match v {
             0x00 => Op::Nop,
-            0x8D => Op::Lea {
-                addr: machine.read_u16(self),
-            },
+            0x8D => {
+                let modrm = machine.read_u8(self);
+                let modrm = ModRm::from(modrm);
+
+                let dst = Operand::Register16(Register16::from(modrm.reg));
+                let src = decode_rm16(self, machine, modrm);
+                Op::Lea { src, dst }
+            }
             0x8A => {
-                let modrm: ModRm = machine.read_u8(self).into();
-                let dst = Register8::from(modrm.reg).into();
-                match modrm.mode {
-                    0x03 => Op::Mov {
-                        src: Register8::from(modrm.rm).into(),
-                        dst,
-                    },
-                    0x00 => Op::Mov {
-                        src: Operand::MemoryBx,
-                        dst,
-                    },
-                    _ => panic!("Unhandled mode"),
-                }
+                let modrm = machine.read_u8(self);
+                let modrm = ModRm::from(modrm);
+
+                let dst = Operand::Register8(Register8::from(modrm.reg));
+                let src = decode_rm8(self, machine, modrm);
+                Op::Mov { src, dst }
             }
             0x8B => {
-                let modrm: ModRm = machine.read_u8(self).into();
-                let dst = Register16::from(modrm.reg).into();
-                match modrm.mode {
-                    0x03 => Op::Mov {
-                        src: Register16::from(modrm.rm).into(),
-                        dst,
-                    },
-                    0x00 => Op::Mov {
-                        src: Operand::MemoryBx,
-                        dst,
-                    },
-                    _ => panic!("Unhandled mode"),
-                }
+                let modrm = machine.read_u8(self);
+                let modrm = ModRm::from(modrm);
+
+                let dst = Operand::Register16(Register16::from(modrm.reg));
+                let src = decode_rm16(self, machine, modrm);
+                Op::Mov { src, dst }
             }
             0xB0..=0xB7 => {
                 let imm = machine.read_u8(self);
@@ -186,15 +274,6 @@ impl Cpu {
                 let dst = Register16::from(v & 0x07);
                 Op::Dec { dst }
             }
-            0x50 => Op::Jnz {
-                addr: machine.read_u16(self),
-            },
-            0x51 => Op::Jz {
-                addr: machine.read_u16(self),
-            },
-            0x52 => Op::Jmp {
-                addr: machine.read_u16(self),
-            },
             0x60..=0x63 => {
                 let src = match v & 0x03 {
                     0 => Register16::Ax,
@@ -226,8 +305,21 @@ impl Cpu {
                 }
             }
             0xF4 => Op::Halt,
-            i => panic!("Unkown command: {i}"),
+            0x74 => Op::Jz {
+                addr: Operand::RelAddress(machine.read_rel8(self)),
+            },
+            0x75 => Op::Jnz {
+                addr: Operand::RelAddress(machine.read_rel8(self)),
+            },
+            0xEB => Op::Jmp {
+                addr: Operand::RelAddress(machine.read_rel8(self)),
+            },
+            i => panic!("Unkown command: {i:02X}"),
         }
+    }
+
+    pub fn resolve_relative(&self, offset: i16) -> u16 {
+        self.registers.ip().wrapping_add_signed(offset)
     }
 }
 
@@ -248,6 +340,15 @@ impl Memory {
     }
     pub fn read_u16(&self, addr: u16) -> u16 {
         u16::from_le_bytes([self.memory[addr as usize], self.memory[addr as usize + 1]])
+    }
+
+    pub fn write_u8(&mut self, addr: u16, value: u8) {
+        self.memory[addr as usize] = value;
+    }
+    pub fn write_u16(&mut self, addr: u16, val: u16) {
+        let splited = val.to_le_bytes();
+        self.memory[addr as usize] = splited[0];
+        self.memory[addr as usize + 1] = splited[1];
     }
 
     pub fn load_program(&mut self, program: &[u8]) {
@@ -279,6 +380,10 @@ impl Machine {
 
         u16::from_le_bytes([l, h])
     }
+
+    pub fn read_rel8(&mut self, cpu: &mut Cpu) -> i16 {
+        i8::from_ne_bytes([self.read_u8(cpu)]) as i16
+    }
 }
 
 fn main() {
@@ -286,13 +391,14 @@ fn main() {
     let memory = Memory::new();
     let mut machine = Machine { memory };
     let path: Vec<String> = std::env::args().collect();
-    let program = read_to_string(&path[1]).unwrap();
-    let compiled = compile_program(&program);
-    eprintln!("[COMPILER] Size = {}", compiled.len());
-    machine.load_program(&compiled);
+    let mut file = File::open(&path[1]).unwrap();
+    let mut buf = Vec::new();
+    let program_size = file.read_to_end(&mut buf).unwrap();
+    eprintln!("[COMPILER] Size = {}", program_size);
+    machine.load_program(&buf);
     loop {
         let instruction = cpu.fetch_decode(&mut machine);
-
+        dbg!(&instruction);
         cpu.execute(&mut machine, instruction);
         if cpu.halted {
             break;

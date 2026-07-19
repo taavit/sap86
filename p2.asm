@@ -1,5 +1,4 @@
-lea data
-mov bx,ax
+lea bx, [data]
 mov ah,0eh
 loop:
     mov al,[bx]
@@ -12,4 +11,3 @@ done:
     hlt
 data:
     db "Hello world!",0
-
