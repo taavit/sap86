@@ -12,6 +12,7 @@ pub enum Op {
     Inc { dst: Operand },
     Test { op1: Operand, op2: Operand },
     Mov { src: Operand, dst: Operand },
+    Sub { src: Operand, dst: Operand },
     Int(u8),
     Halt,
 }

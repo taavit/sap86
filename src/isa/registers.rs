@@ -21,11 +21,24 @@ impl Registers {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SegmentRegister {
     Es = 0,
     Cs = 1,
     Ss = 2,
     Ds = 3,
+}
+
+impl From<u8> for SegmentRegister {
+    fn from(value: u8) -> Self {
+        match value & 0b11 {
+            0b00 => SegmentRegister::Es,
+            0b01 => SegmentRegister::Cs,
+            0b10 => SegmentRegister::Ss,
+            0b11 => SegmentRegister::Ds,
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl Registers {

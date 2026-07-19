@@ -1,4 +1,4 @@
-use crate::isa::registers::{Register8, Register16};
+use crate::isa::registers::{Register8, Register16, SegmentRegister};
 
 pub mod flags;
 pub mod instructions;
@@ -13,6 +13,7 @@ pub enum Operand {
     Mem8(MemSpec),
     Mem16(MemSpec),
     RelAddress(i16),
+    SegmentRegister(SegmentRegister),
 }
 
 impl From<Register8> for Operand {

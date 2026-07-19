@@ -3,7 +3,7 @@ use crate::{
     isa::{
         EffectiveAddressBase, MemSpec, ModRm, Operand,
         instructions::Op,
-        registers::{Register8, Register16},
+        registers::{Register8, Register16, SegmentRegister},
     },
 };
 
@@ -13,6 +13,20 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
         0x90 => Op::Nop,
         0xFA => Op::Cli,
         0xFB => Op::Sti,
+        0x2B => {
+            let modrm = cpu.fetch_u8(machine);
+            let modrm = ModRm::from(modrm);
+            let dst = Operand::Register16(Register16::from(modrm.reg));
+            let src = decode_rm16(cpu, machine, modrm);
+            Op::Sub { src, dst }
+        }
+        0x29 => {
+            let modrm = cpu.fetch_u8(machine);
+            let modrm = ModRm::from(modrm);
+            let src = Operand::Register16(Register16::from(modrm.reg));
+            let dst = decode_rm16(cpu, machine, modrm);
+            Op::Sub { src, dst }
+        }
         0x40..=0x47 => Op::Inc {
             dst: Operand::Register16(Register16::from(v & 7)),
         },
@@ -78,6 +92,20 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
                 _ => panic!("Invalid mod: {:?}", modrm),
             }
         }
+        0x8C => {
+            let modrm = ModRm::from(cpu.fetch_u8(machine));
+            let src = Operand::SegmentRegister(SegmentRegister::from(modrm.reg));
+            let dst = decode_rm16(cpu, machine, modrm);
+
+            Op::Mov { src, dst }
+        }
+        0x8E => {
+            let modrm = ModRm::from(cpu.fetch_u8(machine));
+            let dst = Operand::SegmentRegister(SegmentRegister::from(modrm.reg));
+            let src = decode_rm16(cpu, machine, modrm);
+
+            Op::Mov { src, dst }
+        }
         0xF4 => Op::Halt,
         0x74 => Op::Jz {
             addr: Operand::RelAddress((cpu.fetch_u8(machine) as i8) as i16),
@@ -88,7 +116,7 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
         0xEB => Op::Jmp {
             addr: Operand::RelAddress((cpu.fetch_u8(machine) as i8) as i16),
         },
-        i => panic!("Unkown command: {i:02X}"),
+        i => panic!("Unknown command: {i:02X}, cpu: {cpu:?}"),
     }
 }
 

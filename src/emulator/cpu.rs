@@ -8,6 +8,7 @@ use crate::{
     },
 };
 
+#[derive(Debug)]
 pub struct Cpu {
     pub flags: Flags,
     pub registers: Registers,
@@ -92,6 +93,7 @@ impl Cpu {
             Operand::Imm16(val) => *val,
             Operand::Mem8(spec) => self.read_mem8(machine, spec) as u16,
             Operand::Mem16(spec) => self.read_mem16(machine, spec),
+            Operand::SegmentRegister(reg) => self.registers.read_segment(*reg),
             _ => panic!("Invalid operand"),
         }
     }
@@ -102,6 +104,7 @@ impl Cpu {
             Operand::Register16(reg) => self.registers.write_u16(*reg, value),
             Operand::Mem8(spec) => self.write_mem8(machine, spec, value as u8),
             Operand::Mem16(spec) => self.write_mem16(machine, spec, value),
+            Operand::SegmentRegister(reg) => self.registers.write_segment(*reg, value),
             _ => panic!("Operand read only!"),
         }
     }
@@ -131,6 +134,13 @@ impl Cpu {
                 if !self.flags.zero {
                     self.registers.set_ip(self.resolve_relative(target));
                 }
+            }
+            Op::Sub { src, dst } => {
+                let src_val = self.get_operand_value(machine, &src);
+                let dst_val = self.get_operand_value(machine, &dst);
+                let result = dst_val.wrapping_sub(src_val);
+                self.flags.zero = result == 0;
+                self.set_operand_value(machine, &dst, result);
             }
             Op::Jz {
                 addr: Operand::RelAddress(target),
