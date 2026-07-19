@@ -1,15 +1,15 @@
-use crate::isa::{Operand, registers::Register16};
+use crate::isa::Operand;
 
 #[derive(Debug)]
 pub enum Op {
     Nop,
-    Dec { dst: Register16 },
-    Inc { dst: Register16 },
+    Cli,
+    Sti,
     Lea { src: Operand, dst: Operand },
     Jnz { addr: Operand },
     Jz { addr: Operand },
     Jmp { addr: Operand },
-    Ld { src: Register16 },
+    Inc { dst: Operand },
     Test { op1: Operand, op2: Operand },
     Mov { src: Operand, dst: Operand },
     Int(u8),

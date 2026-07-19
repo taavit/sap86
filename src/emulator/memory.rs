@@ -1,26 +1,35 @@
 #[derive(Debug)]
 pub struct Memory {
-    memory: [u8; u16::MAX as usize],
+    memory: [u8; 1024 * 1024],
 }
 
 impl Memory {
     pub fn new() -> Self {
         Self {
-            memory: [0; u16::MAX as usize],
+            memory: [0; 1024 * 1024 as usize],
         }
     }
 
-    pub fn read_u8(&self, addr: u16) -> u8 {
+    pub fn read_u8(&self, addr: u32) -> u8 {
         self.memory[addr as usize]
     }
-    pub fn read_u16(&self, addr: u16) -> u16 {
+
+    pub fn read_i8(&self, addr: u32) -> i8 {
+        self.memory[addr as usize] as i8
+    }
+
+    pub fn read_u16(&self, addr: u32) -> u16 {
         u16::from_le_bytes([self.memory[addr as usize], self.memory[addr as usize + 1]])
     }
 
-    pub fn write_u8(&mut self, addr: u16, value: u8) {
+    pub fn read_i16(&self, addr: u32) -> i16 {
+        i16::from_le_bytes([self.memory[addr as usize], self.memory[addr as usize + 1]])
+    }
+
+    pub fn write_u8(&mut self, addr: u32, value: u8) {
         self.memory[addr as usize] = value;
     }
-    pub fn write_u16(&mut self, addr: u16, val: u16) {
+    pub fn write_u16(&mut self, addr: u32, val: u16) {
         let splited = val.to_le_bytes();
         self.memory[addr as usize] = splited[0];
         self.memory[addr as usize + 1] = splited[1];

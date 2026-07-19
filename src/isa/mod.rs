@@ -44,7 +44,7 @@ impl From<u8> for ModRm {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum EffectiveAddressBase {
     BxSi,
     BxDi,
@@ -79,4 +79,12 @@ pub struct MemSpec {
     /// Displacement
     pub disp: i16,
     pub is_direct: bool,
+}
+
+impl MemSpec {
+    pub fn uses_bp(&self) -> bool {
+        self.base == EffectiveAddressBase::Bp
+            || self.base == EffectiveAddressBase::BpSi
+            || self.base == EffectiveAddressBase::BpDi
+    }
 }

@@ -1,6 +1,6 @@
 use std::{fs::File, io::Read};
 
-use crate::emulator::{cpu::Cpu, machine::Machine, memory::Memory};
+use crate::emulator::{cpu::Cpu, decoder::fetch_decode, machine::Machine, memory::Memory};
 
 mod emulator;
 mod isa;
@@ -14,9 +14,9 @@ fn main() {
     let mut buf = Vec::new();
     let program_size = file.read_to_end(&mut buf).unwrap();
     eprintln!("[COMPILER] Size = {}", program_size);
-    machine.load_program(&buf);
+    machine.boot_program(&mut cpu, &buf);
     loop {
-        let instruction = cpu.fetch_decode(&mut machine);
+        let instruction = fetch_decode(&mut cpu, &mut machine);
         cpu.execute(&mut machine, instruction);
         if cpu.halted {
             break;

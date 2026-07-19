@@ -1,6 +1,7 @@
 #[derive(Debug)]
 pub struct Registers {
     gpr: [u16; 8],
+    sreg: [u16; 4],
     ip: u16,
 }
 
@@ -12,13 +13,28 @@ impl Default for Registers {
 
 impl Registers {
     pub fn new() -> Self {
-        Self { gpr: [0; 8], ip: 0 }
+        Self {
+            gpr: [0; 8],
+            sreg: [0; 4],
+            ip: 0,
+        }
     }
+}
+
+pub enum SegmentRegister {
+    Es = 0,
+    Cs = 1,
+    Ss = 2,
+    Ds = 3,
 }
 
 impl Registers {
     pub fn step_ip(&mut self) {
         self.ip = self.ip.wrapping_add(1);
+    }
+
+    pub fn step_ip_by(&mut self, step: u16) {
+        self.ip = self.ip.wrapping_add(step);
     }
 
     pub fn ip(&self) -> u16 {
@@ -51,6 +67,14 @@ impl Registers {
         } else {
             ((self.gpr[reg as usize - 4] >> 8) & 0xFF) as u8
         }
+    }
+
+    pub fn read_segment(&self, reg: SegmentRegister) -> u16 {
+        self.sreg[reg as usize]
+    }
+
+    pub fn write_segment(&mut self, reg: SegmentRegister, v: u16) {
+        self.sreg[reg as usize] = v;
     }
 }
 
