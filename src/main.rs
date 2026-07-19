@@ -352,10 +352,10 @@ impl Memory {
     }
 
     pub fn load_program(&mut self, program: &[u8]) {
-        if program.len() > self.memory.len() {
+        if program.len() > self.memory.len() - 0x7C00 {
             panic!("Program to big");
         }
-        self.memory[..program.len()].copy_from_slice(program);
+        self.memory[0x7C00..0x7C00 + program.len()].copy_from_slice(program);
     }
 }
 
@@ -398,7 +398,6 @@ fn main() {
     machine.load_program(&buf);
     loop {
         let instruction = cpu.fetch_decode(&mut machine);
-        dbg!(&instruction);
         cpu.execute(&mut machine, instruction);
         if cpu.halted {
             break;
