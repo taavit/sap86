@@ -1,5 +1,5 @@
 use crate::{
-    emulator::{bios::Bios, machine::Machine},
+    emulator::machine::Machine,
     isa::{
         EffectiveAddressBase, MemSpec, Operand,
         flags::Flags,
@@ -21,6 +21,8 @@ impl Cpu {
             flags: Flags {
                 zero: false,
                 interrupt: false,
+                direction: false,
+                carry: false,
             },
             registers: Registers::new(),
             halted: false,
@@ -137,6 +139,20 @@ impl Cpu {
             Op::Sti => {
                 self.flags.interrupt = true;
             }
+            Op::Cld => {
+                self.flags.direction = false;
+            }
+            Op::Std => {
+                self.flags.direction = true;
+            }
+            Op::Push { src } => {
+                let v = self.get_operand_value(machine, &src);
+                self.push_u16(machine, v);
+            }
+            Op::Pop { dst } => {
+                let v = self.pop_u16(machine);
+                self.set_operand_value(machine, &dst, v);
+            }
             Op::Lea { src, dst } => {
                 let addr = match src {
                     Operand::Mem8(spec) => self.resolve_address(&spec),
@@ -166,7 +182,32 @@ impl Cpu {
             Op::Sub { src, dst } => {
                 let src_val = self.get_operand_value(machine, &src);
                 let dst_val = self.get_operand_value(machine, &dst);
-                let result = dst_val.wrapping_sub(src_val);
+                let (result, c) = dst_val.overflowing_sub(src_val);
+                self.flags.zero = result == 0;
+                self.flags.carry = c;
+                self.set_operand_value(machine, &dst, result);
+            }
+            Op::Add { src, dst } => {
+                let src_val = self.get_operand_value(machine, &src);
+                let dst_val = self.get_operand_value(machine, &dst);
+                let (result, c) = dst_val.overflowing_add(src_val);
+                self.flags.zero = result == 0;
+                self.flags.carry = c;
+                self.set_operand_value(machine, &dst, result);
+            }
+            Op::Adc { src, dst } => {
+                let src_val = self.get_operand_value(machine, &src);
+                let dst_val = self.get_operand_value(machine, &dst);
+                let (result, c) = dst_val.overflowing_add(src_val);
+                let (result, c2) = result.overflowing_add(if self.flags.carry { 1 } else { 0 });
+                self.flags.zero = result == 0;
+                self.flags.carry = c || c2;
+                self.set_operand_value(machine, &dst, result);
+            }
+            Op::Xor { src, dst } => {
+                let src_val = self.get_operand_value(machine, &src);
+                let dst_val = self.get_operand_value(machine, &dst);
+                let result = src_val ^ dst_val;
                 self.flags.zero = result == 0;
                 self.set_operand_value(machine, &dst, result);
             }
@@ -203,7 +244,33 @@ impl Cpu {
                 let value = self.get_operand_value(machine, &src);
                 self.set_operand_value(machine, &dst, value);
             }
-            Op::Int(int) => Bios::handle_interrupt(int, self),
+            Op::Int(int) => machine.bios.handle_interrupt(int, self),
+            Op::MovSb { rep } => {
+                if rep {
+                    while self.registers.read_u16(Register16::Cx) != 0 {
+                        exec_movsb(self, machine);
+                        let cx = self.registers.read_u16(Register16::Cx);
+                        self.registers.write_u16(Register16::Cx, cx.wrapping_sub(1));
+                    }
+                } else {
+                    exec_movsb(self, machine);
+                }
+            }
+            Op::MovSw { rep } => {
+                if rep {
+                    while self.registers.read_u16(Register16::Cx) != 0 {
+                        exec_movsw(self, machine);
+                        let cx = self.registers.read_u16(Register16::Cx);
+                        self.registers.write_u16(Register16::Cx, cx.wrapping_sub(1));
+                    }
+                } else {
+                    exec_movsw(self, machine);
+                }
+            }
+            Op::JmpFar { segment, offset } => {
+                self.registers.write_segment(SegmentRegister::Cs, segment);
+                self.registers.set_ip(offset);
+            }
             Op::Nop => {}
             _ => panic!("Invalid instruction"),
         }
@@ -215,8 +282,9 @@ impl Cpu {
 
     pub fn read_mem8(&self, machine: &Machine, spec: &MemSpec) -> u8 {
         let offset = self.resolve_address(spec);
-
-        let segment = if spec.uses_bp() {
+        let segment = if let Some(segment) = spec.override_segment {
+            segment
+        } else if spec.uses_bp() {
             SegmentRegister::Ss
         } else {
             SegmentRegister::Ds
@@ -231,7 +299,9 @@ impl Cpu {
     pub fn read_mem16(&self, machine: &Machine, spec: &MemSpec) -> u16 {
         let offset = self.resolve_address(spec);
 
-        let segment = if spec.uses_bp() {
+        let segment = if let Some(segment) = spec.override_segment {
+            segment
+        } else if spec.uses_bp() {
             SegmentRegister::Ss
         } else {
             SegmentRegister::Ds
@@ -271,5 +341,53 @@ impl Cpu {
             Self::calculate_physical_address(self.registers.read_segment(segment), offset),
             value,
         );
+    }
+}
+
+fn exec_movsw(cpu: &mut Cpu, machine: &mut Machine) {
+    let dest_es = cpu.registers.read_segment(SegmentRegister::Es);
+    let dest_di = cpu.registers.read_u16(Register16::Di);
+    let dst_addr = Cpu::calculate_physical_address(dest_es, dest_di);
+
+    let src_ds = cpu.registers.read_segment(SegmentRegister::Ds);
+    let src_si = cpu.registers.read_u16(Register16::Si);
+    let src_addr = Cpu::calculate_physical_address(src_ds, src_si);
+    let val = machine.read_physical_u16(src_addr);
+    machine.write_physical_u16(dst_addr, val);
+
+    if cpu.flags.direction {
+        cpu.registers
+            .write_u16(Register16::Di, dest_di.wrapping_sub(2));
+        cpu.registers
+            .write_u16(Register16::Si, src_si.wrapping_sub(2));
+    } else {
+        cpu.registers
+            .write_u16(Register16::Di, dest_di.wrapping_add(2));
+        cpu.registers
+            .write_u16(Register16::Si, src_si.wrapping_add(2));
+    }
+}
+
+fn exec_movsb(cpu: &mut Cpu, machine: &mut Machine) {
+    let dest_es = cpu.registers.read_segment(SegmentRegister::Es);
+    let dest_di = cpu.registers.read_u16(Register16::Di);
+    let dst_addr = Cpu::calculate_physical_address(dest_es, dest_di);
+
+    let src_ds = cpu.registers.read_segment(SegmentRegister::Ds);
+    let src_si = cpu.registers.read_u16(Register16::Si);
+    let src_addr = Cpu::calculate_physical_address(src_ds, src_si);
+    let val = machine.read_physical_u8(src_addr);
+    machine.write_physical_u8(dst_addr, val);
+
+    if cpu.flags.direction {
+        cpu.registers
+            .write_u16(Register16::Di, dest_di.wrapping_sub(1));
+        cpu.registers
+            .write_u16(Register16::Si, src_si.wrapping_sub(1));
+    } else {
+        cpu.registers
+            .write_u16(Register16::Di, dest_di.wrapping_add(1));
+        cpu.registers
+            .write_u16(Register16::Si, src_si.wrapping_add(1));
     }
 }

@@ -1,12 +1,13 @@
 use core::panic;
 
 use crate::{
-    emulator::{cpu::Cpu, memory::Memory},
+    emulator::{bios::Bios, cpu::Cpu, memory::Memory},
     isa::registers::Register16,
 };
 
 pub struct Machine {
     pub memory: Memory,
+    pub bios: Bios,
 }
 
 impl Machine {
@@ -18,7 +19,7 @@ impl Machine {
 
     pub fn read_physical_u8(&self, addr: u32) -> u8 {
         match addr {
-            0x00000..=0x003FF => panic!("{addr:02X}: Access to IVT (Interrupt Vector Table)"),
+            0x00000..=0x003FF => self.memory.read_u8(addr),
             0x00400..=0x004FF => panic!("{addr:02X}: Access to BDA (BIOS Data area)"),
             0x00500..=0x9FFFF => self.memory.read_u8(addr),
             0xA0000..=0xB7FFF => panic!("{addr:02X}: Access to Video Ram Graphic"),
@@ -32,7 +33,7 @@ impl Machine {
 
     pub fn read_physical_u16(&self, addr: u32) -> u16 {
         match addr {
-            0x00000..=0x003FF => panic!("{addr:02X}: Access to IVT (Interrupt Vector Table)"),
+            0x00000..=0x003FF => self.memory.read_u16(addr),
             0x00400..=0x004FF => panic!("{addr:02X}: Access to BDA (BIOS Data area)"),
             0x00500..=0x9FFFF => self.memory.read_u16(addr),
             0xA0000..=0xB7FFF => panic!("{addr:02X}: Access to Video Ram Graphic"),
@@ -46,7 +47,7 @@ impl Machine {
 
     pub fn write_physical_u8(&mut self, addr: u32, value: u8) {
         match addr {
-            0x00000..=0x003FF => panic!("{addr:02X}: Write access to IVT (Interrupt Vector Table)"),
+            0x00000..=0x003FF => self.memory.write_u8(addr, value),
             0x00400..=0x004FF => panic!("{addr:02X}: Write access to BDA (BIOS Data area)"),
             0x00500..=0x9FFFF => self.memory.write_u8(addr, value),
             0xA0000..=0xB7FFF => panic!("{addr:02X}: Write access to Video Ram Graphic"),
@@ -60,7 +61,7 @@ impl Machine {
 
     pub fn write_physical_u16(&mut self, addr: u32, value: u16) {
         match addr {
-            0x00000..=0x003FF => panic!("{addr:02X}: Write access to IVT (Interrupt Vector Table)"),
+            0x00000..=0x003FF => self.memory.write_u16(addr, value),
             0x00400..=0x004FF => panic!("{addr:02X}: Write access to BDA (BIOS Data area)"),
             0x00500..=0x9FFFF => self.memory.write_u16(addr, value),
             0xA0000..=0xB7FFF => panic!("{addr:02X}: Write access to Video Ram Graphic"),

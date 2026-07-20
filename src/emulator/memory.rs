@@ -6,7 +6,7 @@ pub struct Memory {
 impl Memory {
     pub fn new() -> Self {
         Self {
-            memory: [0; 1024 * 1024 as usize],
+            memory: [0; 1024 * 1024],
         }
     }
 

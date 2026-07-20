@@ -1,4 +1,5 @@
-#[derive(Debug)]
+use std::fmt::Debug;
+
 pub struct Registers {
     gpr: [u16; 8],
     sreg: [u16; 4],
@@ -101,6 +102,29 @@ pub enum Register16 {
     Bp,
     Si,
     Di,
+}
+
+impl Debug for Registers {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "[REGS  ] AX: 0x{:04X}\tCX: 0x{:04X}\tDX: 0x{:04X}\tBX: 0x{:04X}\tSP: 0x{:04X}\tBP: 0x{:04X}\tSI: 0x{:04X}\tDI: 0x{:04X}",
+            self.gpr[0],
+            self.gpr[1],
+            self.gpr[2],
+            self.gpr[3],
+            self.gpr[4],
+            self.gpr[5],
+            self.gpr[6],
+            self.gpr[7],
+        )?;
+        writeln!(
+            f,
+            "[REGS ] IP: 0x{:04X}\tES: 0x{:04X}\tCS: 0x{:04X}\tDS: 0x{:04X}\tDS: 0x{:04X}",
+            self.ip, self.sreg[0], self.sreg[1], self.sreg[2], self.sreg[3],
+        )?;
+        Ok(())
+    }
 }
 
 impl From<u8> for Register16 {

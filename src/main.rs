@@ -1,6 +1,8 @@
 use std::{fs::File, io::Read};
 
-use crate::emulator::{cpu::Cpu, decoder::fetch_decode, machine::Machine, memory::Memory};
+use crate::emulator::{
+    bios::Bios, cpu::Cpu, decoder::fetch_decode, machine::Machine, memory::Memory,
+};
 
 mod emulator;
 mod isa;
@@ -8,7 +10,8 @@ mod isa;
 fn main() {
     let mut cpu = Cpu::new();
     let memory = Memory::new();
-    let mut machine = Machine { memory };
+    let bios = Bios::new();
+    let mut machine = Machine { memory, bios };
     let path: Vec<String> = std::env::args().collect();
     let mut file = File::open(&path[1]).unwrap();
     let mut buf = Vec::new();

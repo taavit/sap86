@@ -80,6 +80,7 @@ pub struct MemSpec {
     /// Displacement
     pub disp: i16,
     pub is_direct: bool,
+    pub override_segment: Option<SegmentRegister>,
 }
 
 impl MemSpec {
