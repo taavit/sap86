@@ -1,0 +1,37 @@
+const SECTOR_SIZE: usize = 512;
+const HEADS: usize = 2;
+const SECTORS_PER_TRACK: usize = 9;
+const CYLINDERS: usize = 40;
+const FLOPPY_SIZE: usize = CYLINDERS * HEADS * SECTORS_PER_TRACK * SECTOR_SIZE;
+
+pub struct Floppy525DD {
+    data: [u8; FLOPPY_SIZE],
+}
+
+pub trait Floppy {
+    fn read_chs_sector(&self, c: u8, h: u8, s: u8) -> &[u8];
+    fn reset_device(&mut self);
+}
+
+impl Floppy for Floppy525DD {
+    fn read_chs_sector(&self, c: u8, h: u8, s: u8) -> &[u8] {
+        let pos = Self::chs_to_lba(c, h, s) as usize;
+        &self.data[pos..pos + 512]
+    }
+    fn reset_device(&mut self) {}
+}
+
+impl Floppy525DD {
+    pub fn new() -> Self {
+        Self {
+            data: [0; FLOPPY_SIZE],
+        }
+    }
+    fn chs_to_lba(c: u8, h: u8, s: u8) -> u32 {
+        (c as u32 * 2 + h as u32) * 9 + (s as u32 - 1)
+    }
+
+    pub fn insert(&mut self, data: &[u8]) {
+        self.data[..data.len()].copy_from_slice(data);
+    }
+}

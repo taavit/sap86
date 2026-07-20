@@ -1,46 +1,32 @@
 use crate::{
-    emulator::cpu::Cpu,
+    emulator::{
+        cpu::Cpu,
+        machine::{CursorPosition, Machine},
+        storage::Floppy,
+    },
     isa::registers::{Register8, Register16, SegmentRegister},
 };
 
-#[derive(Debug, Default)]
-struct CursorPosition {
-    page: u8,
-    row: u8,
-    col: u8,
-}
-
-pub struct Bios {
-    video_mode: u8,
-    cursor_position: CursorPosition,
-}
+pub struct Bios;
 
 impl Bios {
-    pub fn new() -> Self {
-        Bios {
-            video_mode: 0,
-            cursor_position: CursorPosition::default(),
-        }
-    }
-}
-
-impl Bios {
-    pub fn handle_interrupt(&mut self, int: u8, cpu: &Cpu) {
+    pub fn handle_interrupt(int: u8, cpu: &mut Cpu, machine: &mut Machine) {
         match int {
             0x10 => {
                 let op = cpu.registers.read_u8(Register8::Ah);
                 match op {
                     0x00 => {
-                        self.video_mode = cpu.registers.read_u8(Register8::Al);
-                        println!("Set video mode to: {}", self.video_mode);
+                        let video_mode = cpu.registers.read_u8(Register8::Al);
+                        machine.video.set_video_mode(video_mode);
+                        println!("Set video mode to: {}", video_mode);
                     }
                     0x02 => {
-                        self.cursor_position = CursorPosition {
+                        let cursor_position = CursorPosition {
                             page: cpu.registers.read_u8(Register8::Bh),
                             row: cpu.registers.read_u8(Register8::Dh),
                             col: cpu.registers.read_u8(Register8::Dl),
                         };
-                        dbg!(&self.cursor_position);
+                        machine.video.set_cursor_position(cursor_position);
                     }
                     0x0E => print!("{}", cpu.registers.read_u8(Register8::Al) as char),
                     _ => panic!("Unhandled interrupt {:02X}:{:02X}", int, op),
@@ -54,13 +40,22 @@ impl Bios {
                         let count = cpu.registers.read_u8(Register8::Al);
                         let cylinder = cpu.registers.read_u8(Register8::Ch);
                         let sector = cpu.registers.read_u8(Register8::Cl);
+                        let drive = cpu.registers.read_u8(Register8::Dl);
                         let head = cpu.registers.read_u8(Register8::Dh);
-                        let buffer = cpu.registers.read_u16(Register16::Bx);
+                        let offset = cpu.registers.read_u16(Register16::Bx);
                         let segment = cpu.registers.read_segment(SegmentRegister::Es);
 
                         println!(
-                            "Reading {count} sector(s) from {cylinder}:{head}:{sector} into {segment:04X}:{buffer:04X}"
+                            "Reading {count} sector(s) from {cylinder}:{head}:{sector} into {segment:04X}:{offset:04X} from {drive:02X}"
                         );
+                        let bytes = machine
+                            .floppy
+                            .read_chs_sector(cylinder, head, sector)
+                            .to_vec();
+                        for byte in bytes {
+                            machine.write_physical_u8((segment as u32 * 16) + offset as u32, byte);
+                        }
+                        cpu.flags.carry = false;
                     }
                     _ => panic!("Unhandled interrupt {:02X}:{:02X}", int, op),
                 }

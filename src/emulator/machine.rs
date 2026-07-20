@@ -1,20 +1,49 @@
 use core::panic;
 
 use crate::{
-    emulator::{bios::Bios, cpu::Cpu, memory::Memory},
+    emulator::{bios::Bios, cpu::Cpu, memory::Memory, storage::Floppy525DD},
     isa::registers::Register16,
 };
 
 pub struct Machine {
     pub memory: Memory,
-    pub bios: Bios,
+    pub floppy: Floppy525DD,
+    pub video: VideoCard,
+}
+
+#[derive(Debug, Default)]
+pub struct CursorPosition {
+    pub page: u8,
+    pub row: u8,
+    pub col: u8,
+}
+
+#[derive(Debug, Default)]
+pub struct VideoCard {
+    video_mode: u8,
+    cursor_position: CursorPosition,
+}
+
+impl VideoCard {
+    pub fn set_video_mode(&mut self, video_mode: u8) {
+        self.video_mode = video_mode;
+    }
+
+    pub fn set_cursor_position(&mut self, cursor_position: CursorPosition) {
+        self.cursor_position = cursor_position;
+    }
 }
 
 impl Machine {
-    pub fn boot_program(&mut self, cpu: &mut Cpu, program: &[u8]) {
-        self.memory.load_program(program);
+    pub fn boot(&mut self, cpu: &mut Cpu, device: &[u8]) {
+        self.floppy.insert(device);
+        self.memory.load_program(&device[..512]);
         cpu.registers.set_ip(0x7C00);
         cpu.registers.write_u16(Register16::Sp, 0xFFFE);
+    }
+
+    pub fn handle_bios_interrupt(&mut self, cpu: &mut Cpu, int: u8) {
+        Bios::handle_interrupt(int, cpu, self);
     }
 
     pub fn read_physical_u8(&self, addr: u32) -> u8 {
