@@ -14,5 +14,7 @@ pub enum Op {
     Mov { src: Operand, dst: Operand },
     Sub { src: Operand, dst: Operand },
     Int(u8),
+    Call { addr: Operand },
+    Ret,
     Halt,
 }

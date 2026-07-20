@@ -13,6 +13,13 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
         0x90 => Op::Nop,
         0xFA => Op::Cli,
         0xFB => Op::Sti,
+        0xE8 => {
+            let offset = cpu.fetch_u16(machine) as i16;
+            Op::Call {
+                addr: Operand::RelAddress(offset),
+            }
+        }
+        0xC3 => Op::Ret,
         0x2B => {
             let modrm = cpu.fetch_u8(machine);
             let modrm = ModRm::from(modrm);

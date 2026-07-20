@@ -53,6 +53,23 @@ impl Cpu {
         r
     }
 
+    fn push_u16(&mut self, machine: &mut Machine, value: u16) {
+        let offset = self.registers.read_u16(Register16::Sp).wrapping_sub(2);
+        self.registers.write_u16(Register16::Sp, offset);
+        let segment = self.registers.read_segment(SegmentRegister::Ss);
+        let address = Self::calculate_physical_address(segment, offset);
+        machine.write_physical_u16(address, value)
+    }
+
+    fn pop_u16(&mut self, machine: &Machine) -> u16 {
+        let sp = self.registers.read_u16(Register16::Sp);
+        let segment = self.registers.read_segment(SegmentRegister::Ss);
+        let address = Self::calculate_physical_address(segment, sp);
+        let v = machine.read_physical_u16(address);
+        self.registers.write_u16(Register16::Sp, sp.wrapping_add(2));
+        v
+    }
+
     fn resolve_address(&self, spec: &MemSpec) -> u16 {
         if spec.is_direct {
             spec.disp as u16
@@ -134,6 +151,17 @@ impl Cpu {
                 if !self.flags.zero {
                     self.registers.set_ip(self.resolve_relative(target));
                 }
+            }
+            Op::Call {
+                addr: Operand::RelAddress(target),
+            } => {
+                let ip = self.registers.ip();
+                self.push_u16(machine, ip);
+                self.registers.set_ip(self.resolve_relative(target));
+            }
+            Op::Ret => {
+                let return_address = self.pop_u16(machine);
+                self.registers.set_ip(return_address);
             }
             Op::Sub { src, dst } => {
                 let src_val = self.get_operand_value(machine, &src);
