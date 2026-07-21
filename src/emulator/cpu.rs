@@ -397,6 +397,76 @@ impl Cpu {
                 self.registers.write_segment(SegmentRegister::Cs, segment);
                 self.registers.set_ip(offset);
             }
+            Op::Shl { dst, count } => {
+                let val = self.get_operand_value(machine, &dst);
+                match dst {
+                    Operand::Register8(_) | Operand::Mem8(_) => {
+                        let mut v = val as u8;
+                        for _ in 0..count {
+                            self.flags.carry = (v & 0x80) != 0;
+                            v <<= 1;
+                        }
+                        self.flags.zero = v == 0;
+                        self.flags.sign = (v & 0x80) != 0;
+                        self.flags.parity = v.count_ones() % 2 == 0;
+                        if count == 1 {
+                            self.flags.overflow = self.flags.carry ^ self.flags.sign;
+                        }
+                        self.set_operand_value(machine, &dst, v as u16);
+                    }
+                    Operand::Register16(_) | Operand::Mem16(_) => {
+                        let mut v = val;
+                        for _ in 0..count {
+                            self.flags.carry = (v & 0x8000) != 0;
+                            v <<= 1;
+                        }
+                        self.flags.zero = v == 0;
+                        self.flags.sign = (v & 0x8000) != 0;
+                        self.flags.parity = (v as u8).count_ones() % 2 == 0;
+                        if count == 1 {
+                            self.flags.overflow = self.flags.carry ^ self.flags.sign;
+                        }
+                        self.set_operand_value(machine, &dst, v);
+                    }
+                    _ => panic!("Invalid operand combination"),
+                }
+            }
+            Op::Shr { dst, count } => {
+                let val = self.get_operand_value(machine, &dst);
+                match dst {
+                    Operand::Register8(_) | Operand::Mem8(_) => {
+                        let mut v = val as u8;
+                        let original_msb = (v & 0x80) != 0;
+                        for _ in 0..count {
+                            self.flags.carry = (v & 0x01) != 0;
+                            v >>= 1;
+                        }
+                        self.flags.zero = v == 0;
+                        self.flags.sign = false;
+                        self.flags.parity = v.count_ones() % 2 == 0;
+                        if count == 1 {
+                            self.flags.overflow = original_msb;
+                        }
+                        self.set_operand_value(machine, &dst, v as u16);
+                    }
+                    Operand::Register16(_) | Operand::Mem16(_) => {
+                        let mut v = val;
+                        let original_msb = (v & 0x8000) != 0;
+                        for _ in 0..count {
+                            self.flags.carry = (v & 0x01) != 0;
+                            v >>= 1;
+                        }
+                        self.flags.zero = v == 0;
+                        self.flags.sign = false;
+                        self.flags.parity = (v as u8).count_ones() % 2 == 0;
+                        if count == 1 {
+                            self.flags.overflow = original_msb;
+                        }
+                        self.set_operand_value(machine, &dst, v);
+                    }
+                    _ => panic!("Invalid operand combination"),
+                }
+            }
             Op::Nop => {}
             _ => panic!("Invalid instruction: {:?}", instruction),
         }

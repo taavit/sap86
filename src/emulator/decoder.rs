@@ -35,6 +35,20 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
                 addr: Operand::RelAddress(offset),
             }
         }
+        0xD1 => {
+            let modrm = cpu.fetch_u8(machine);
+            let modrm = ModRm::from(modrm);
+            let dst = decode_rm16(cpu, machine, &modrm, override_segment);
+            match modrm.reg {
+                0b000 => Op::Rol { dst, count: 1 },
+                0b001 => Op::Ror { dst, count: 1 },
+                0b010 => Op::Rcl { dst, count: 1 },
+                0b011 => Op::Rcr { dst, count: 1 },
+                0b100 => Op::Shl { dst, count: 1 },
+                0b101 => Op::Shr { dst, count: 1 },
+                _ => unimplemented!(),
+            }
+        }
         0xC3 => Op::Ret,
         0x83 => {
             let modrm = cpu.fetch_u8(machine);

@@ -15,8 +15,9 @@ pub trait Floppy {
 
 impl Floppy for Floppy525DD {
     fn read_chs_sector(&self, c: u8, h: u8, s: u8) -> &[u8] {
-        let pos = Self::chs_to_lba(c, h, s) as usize;
-        &self.data[pos..pos + 512]
+        let lba = Self::chs_to_lba(c, h, s) as usize;
+        let pos = lba * SECTOR_SIZE;
+        &self.data[pos..pos + SECTOR_SIZE]
     }
     fn reset_device(&mut self) {}
 }
