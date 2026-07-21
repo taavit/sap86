@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::isa::registers::{Register8, Register16, SegmentRegister};
 
 pub mod flags;
@@ -14,6 +16,72 @@ pub enum Operand {
     Mem16(MemSpec),
     RelAddress(i16),
     SegmentRegister(SegmentRegister),
+}
+
+impl Display for Operand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Operand::Register8(reg) => write!(f, "{reg}"),
+            Operand::Register16(reg) => write!(f, "{reg}"),
+            Operand::SegmentRegister(reg) => write!(f, "{reg}"),
+            Operand::Imm8(v) => write!(f, "0x{v:02X}"),
+            Operand::Imm16(v) => write!(f, "0x{v:04X}"),
+            Operand::Mem16(s) => {
+                if s.is_direct {
+                    write!(f, "[{:04X}]", s.disp)
+                } else {
+                    match s.base {
+                        EffectiveAddressBase::Bx => {
+                            if s.disp == 0 {
+                                write!(f, "[bx]")
+                            } else {
+                                write!(f, "[bx+{:04X}]", s.disp)
+                            }
+                        }
+                        EffectiveAddressBase::Bp => {
+                            if s.disp == 0 {
+                                write!(f, "[bp]")
+                            } else {
+                                write!(f, "[bp+{:04X}]", s.disp)
+                            }
+                        }
+                        _ => panic!("Not yet {:?}", s.base),
+                    }
+                }
+            }
+            Operand::Mem8(s) => {
+                if s.is_direct {
+                    write!(f, "[{:04X}]", s.disp)
+                } else {
+                    match s.base {
+                        EffectiveAddressBase::Bx => {
+                            if s.disp == 0 {
+                                write!(f, "[bx]")
+                            } else {
+                                write!(f, "[bx+{:02X}]", s.disp)
+                            }
+                        }
+                        EffectiveAddressBase::Bp => {
+                            if s.disp == 0 {
+                                write!(f, "[bp]")
+                            } else {
+                                write!(f, "[bp+{:02X}]", s.disp)
+                            }
+                        }
+                        EffectiveAddressBase::Si => {
+                            if s.disp == 0 {
+                                write!(f, "[si]")
+                            } else {
+                                write!(f, "[si+{:02X}]", s.disp)
+                            }
+                        }
+                        _ => panic!("Not yet {:?}", s.base),
+                    }
+                }
+            }
+            Operand::RelAddress(addr) => write!(f, "0x{addr:04X}"),
+        }
+    }
 }
 
 impl From<Register8> for Operand {

@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
 pub struct Registers {
     gpr: [u16; 8],
@@ -28,6 +28,17 @@ pub enum SegmentRegister {
     Cs = 1,
     Ss = 2,
     Ds = 3,
+}
+
+impl Display for SegmentRegister {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cs => f.write_str("cs"),
+            Self::Ds => f.write_str("ds"),
+            Self::Es => f.write_str("es"),
+            Self::Ss => f.write_str("ss"),
+        }
+    }
 }
 
 impl From<u8> for SegmentRegister {
@@ -104,11 +115,26 @@ pub enum Register16 {
     Di,
 }
 
+impl Display for Register16 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Register16::Ax => f.write_str("ax"),
+            Register16::Cx => f.write_str("cx"),
+            Register16::Dx => f.write_str("dx"),
+            Register16::Bx => f.write_str("bx"),
+            Register16::Sp => f.write_str("sp"),
+            Register16::Bp => f.write_str("bp"),
+            Register16::Si => f.write_str("si"),
+            Register16::Di => f.write_str("di"),
+        }
+    }
+}
+
 impl Debug for Registers {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
-            "[REGS  ] AX: 0x{:04X}\tCX: 0x{:04X}\tDX: 0x{:04X}\tBX: 0x{:04X}\tSP: 0x{:04X}\tBP: 0x{:04X}\tSI: 0x{:04X}\tDI: 0x{:04X}",
+            "[REGS ] AX: 0x{:04X}\tCX: 0x{:04X}\tDX: 0x{:04X}\tBX: 0x{:04X}\tSP: 0x{:04X}\tBP: 0x{:04X}\tSI: 0x{:04X}\tDI: 0x{:04X}",
             self.gpr[0],
             self.gpr[1],
             self.gpr[2],
@@ -120,7 +146,7 @@ impl Debug for Registers {
         )?;
         writeln!(
             f,
-            "[REGS ] IP: 0x{:04X}\tES: 0x{:04X}\tCS: 0x{:04X}\tDS: 0x{:04X}\tDS: 0x{:04X}",
+            "[REGS ] IP: 0x{:04X}\tES: 0x{:04X}\tCS: 0x{:04X}\tSS: 0x{:04X}\tDS: 0x{:04X}",
             self.ip, self.sreg[0], self.sreg[1], self.sreg[2], self.sreg[3],
         )?;
         Ok(())
@@ -153,6 +179,21 @@ pub enum Register8 {
     Ch,
     Dh,
     Bh,
+}
+
+impl Display for Register8 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Al => f.write_str("al"),
+            Self::Ah => f.write_str("ah"),
+            Self::Cl => f.write_str("cl"),
+            Self::Ch => f.write_str("ch"),
+            Self::Dl => f.write_str("dl"),
+            Self::Dh => f.write_str("dh"),
+            Self::Bl => f.write_str("bl"),
+            Self::Bh => f.write_str("bh"),
+        }
+    }
 }
 
 impl From<u8> for Register8 {

@@ -1,5 +1,8 @@
 use crate::{
-    emulator::{instruction::exec_sub, machine::Machine},
+    emulator::{
+        instruction::{exec_add, exec_sub, exec_xor},
+        machine::Machine,
+    },
     isa::{
         EffectiveAddressBase, MemSpec, Operand,
         flags::Flags,
@@ -148,6 +151,10 @@ impl Cpu {
                 let v = self.pop_u16(machine);
                 self.set_operand_value(machine, &dst, v);
             }
+            Op::Cbw => {
+                let v = self.registers.read_u8(Register8::Al);
+                self.registers.write_u16(Register16::Ax, v as u16);
+            }
             Op::Lea { src, dst } => {
                 let addr = match src {
                     Operand::Mem8(spec) => self.resolve_address(&spec),
@@ -175,14 +182,7 @@ impl Cpu {
                 self.registers.set_ip(return_address);
             }
             Op::Sub { src, dst } => exec_sub(&src, &dst, self, machine),
-            Op::Add { src, dst } => {
-                let src_val = self.get_operand_value(machine, &src);
-                let dst_val = self.get_operand_value(machine, &dst);
-                let (result, c) = dst_val.overflowing_add(src_val);
-                self.flags.zero = result == 0;
-                self.flags.carry = c;
-                self.set_operand_value(machine, &dst, result);
-            }
+            Op::Add { src, dst } => exec_add(&src, &dst, self, machine),
             Op::Adc { src, dst } => {
                 let src_val = self.get_operand_value(machine, &src);
                 let dst_val = self.get_operand_value(machine, &dst);
@@ -192,12 +192,33 @@ impl Cpu {
                 self.flags.carry = c || c2;
                 self.set_operand_value(machine, &dst, result);
             }
-            Op::Xor { src, dst } => {
+            Op::Xor { src, dst } => exec_xor(&src, &dst, self, machine),
+            Op::And { src, dst } => {
                 let src_val = self.get_operand_value(machine, &src);
                 let dst_val = self.get_operand_value(machine, &dst);
-                let result = src_val ^ dst_val;
-                self.flags.zero = result == 0;
-                self.set_operand_value(machine, &dst, result);
+                match dst {
+                    Operand::Register8(_) | Operand::Mem8(_) => {
+                        let dst_val = dst_val as u8;
+                        let src_val = src_val as u8;
+                        let result = dst_val & src_val;
+                        self.flags.zero = result == 0;
+                        self.flags.carry = false;
+                        self.flags.sign = (result & 0x80) != 0;
+                        self.flags.overflow = false;
+                        self.flags.parity = result.count_ones().is_multiple_of(2);
+                        self.set_operand_value(machine, &dst, result as u16);
+                    }
+                    Operand::Register16(_) | Operand::Mem16(_) => {
+                        let result = dst_val & src_val;
+                        self.flags.zero = result == 0;
+                        self.flags.sign = (result & 0x8000) != 0;
+                        self.flags.carry = false;
+                        self.flags.overflow = false;
+                        self.flags.parity = (result as u8).count_ones().is_multiple_of(2);
+                        self.set_operand_value(machine, &dst, result);
+                    }
+                    _ => panic!("Invalid combination"),
+                }
             }
             Op::Jz {
                 addr: Operand::RelAddress(target),
@@ -226,6 +247,13 @@ impl Cpu {
                     self.registers.set_ip(self.resolve_relative(target));
                 }
             }
+            Op::Jc {
+                addr: Operand::RelAddress(target),
+            } => {
+                if self.flags.carry {
+                    self.registers.set_ip(self.resolve_relative(target));
+                }
+            }
             Op::Test { op1, op2 } => {
                 match (op1, op2) {
                     (Operand::Register16(reg1), Operand::Register16(reg2)) => {
@@ -251,7 +279,7 @@ impl Cpu {
                     Operand::Register8(_) | Operand::Mem8(_) => {
                         let dst_val = dst_val as u8;
                         let src_val = src_val as u8;
-                        let (result, c) = (dst_val as u8).overflowing_sub(src_val as u8);
+                        let (result, c) = (dst_val).overflowing_sub(src_val);
                         self.flags.zero = result == 0;
                         self.flags.carry = c;
                         self.flags.sign = (result & 0x80) != 0;
@@ -267,7 +295,7 @@ impl Cpu {
                         self.flags.sign = (result & 0x8000) != 0;
                         self.flags.overflow =
                             ((dst_val ^ src_val) & (dst_val ^ result) & 0x8000) != 0;
-                        self.flags.parity = (result as u8).count_ones() % 2 == 0;
+                        self.flags.parity = (result as u8).count_ones().is_multiple_of(2);
                         self.flags.auxiliary = ((dst_val ^ src_val ^ result) & 0x10) != 0;
                     }
                     _ => panic!("Invalid combination"),
@@ -323,7 +351,7 @@ impl Cpu {
             Op::Mul { src } => match src {
                 Operand::Register8(_) | Operand::Mem8(_) => {
                     let lhs = self.registers.read_u8(Register8::Al) as u16;
-                    let rhs = self.get_operand_value(machine, &src) as u16;
+                    let rhs = self.get_operand_value(machine, &src);
 
                     let result = lhs * rhs;
                     self.registers.write_u16(Register16::Ax, result);
@@ -355,7 +383,7 @@ impl Cpu {
                 }
                 Operand::Register16(_) | Operand::Mem16(_) => {
                     let lhs = self.registers.read_u16(Register16::Ax) as i16 as i32;
-                    let rhs = self.get_operand_value(machine, &src) as u16 as i16 as i32;
+                    let rhs = self.get_operand_value(machine, &src) as i16 as i32;
 
                     let result = lhs * rhs;
                     self.registers.write_u16(Register16::Ax, result as u16);
@@ -408,7 +436,7 @@ impl Cpu {
                         }
                         self.flags.zero = v == 0;
                         self.flags.sign = (v & 0x80) != 0;
-                        self.flags.parity = v.count_ones() % 2 == 0;
+                        self.flags.parity = v.count_ones().is_multiple_of(2);
                         if count == 1 {
                             self.flags.overflow = self.flags.carry ^ self.flags.sign;
                         }
@@ -422,7 +450,7 @@ impl Cpu {
                         }
                         self.flags.zero = v == 0;
                         self.flags.sign = (v & 0x8000) != 0;
-                        self.flags.parity = (v as u8).count_ones() % 2 == 0;
+                        self.flags.parity = (v as u8).count_ones().is_multiple_of(2);
                         if count == 1 {
                             self.flags.overflow = self.flags.carry ^ self.flags.sign;
                         }
@@ -443,7 +471,7 @@ impl Cpu {
                         }
                         self.flags.zero = v == 0;
                         self.flags.sign = false;
-                        self.flags.parity = v.count_ones() % 2 == 0;
+                        self.flags.parity = v.count_ones().is_multiple_of(2);
                         if count == 1 {
                             self.flags.overflow = original_msb;
                         }
@@ -458,7 +486,7 @@ impl Cpu {
                         }
                         self.flags.zero = v == 0;
                         self.flags.sign = false;
-                        self.flags.parity = (v as u8).count_ones() % 2 == 0;
+                        self.flags.parity = (v as u8).count_ones().is_multiple_of(2);
                         if count == 1 {
                             self.flags.overflow = original_msb;
                         }
@@ -468,6 +496,25 @@ impl Cpu {
                 }
             }
             Op::Nop => {}
+            Op::Lodsb => {
+                let offset = self.registers.read_u16(Register16::Si);
+                let segment = self.registers.read_segment(SegmentRegister::Ds);
+                let address = Self::calculate_physical_address(segment, offset);
+                let value = machine.read_physical_u8(address);
+                self.registers.write_u8(Register8::Al, value);
+                if self.flags.direction {
+                    self.registers
+                        .write_u16(Register16::Si, offset.wrapping_sub(1));
+                } else {
+                    self.registers
+                        .write_u16(Register16::Si, offset.wrapping_add(1));
+                }
+            }
+            Op::Out => {
+                let port = self.registers.read_u16(Register16::Dx);
+                let value = self.registers.read_u8(Register8::Al);
+                machine.handle_pic_out(port, value);
+            }
             _ => panic!("Invalid instruction: {:?}", instruction),
         }
     }

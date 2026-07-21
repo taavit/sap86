@@ -46,6 +46,10 @@ impl Machine {
         Bios::handle_interrupt(int, cpu, self);
     }
 
+    pub fn handle_pic_out(&mut self, port: u16, value: u8) {
+        eprintln!("[OUT] Port 0x{port:04X} <- {value}");
+    }
+
     pub fn read_physical_u8(&self, addr: u32) -> u8 {
         match addr {
             0x00000..=0x003FF => self.memory.read_u8(addr),

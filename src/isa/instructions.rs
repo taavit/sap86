@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::isa::Operand;
 
 #[derive(Debug)]
@@ -7,11 +9,13 @@ pub enum Op {
     Sti,
     Std,
     Cld,
+    Lodsb,
     Lea { src: Operand, dst: Operand },
     Jnz { addr: Operand },
     Jz { addr: Operand },
     Jmp { addr: Operand },
     Jnc { addr: Operand },
+    Jc { addr: Operand },
     Inc { dst: Operand },
     Dec { dst: Operand },
     Not { dst: Operand },
@@ -28,6 +32,9 @@ pub enum Op {
     Mov { src: Operand, dst: Operand },
     Sub { src: Operand, dst: Operand },
     Add { src: Operand, dst: Operand },
+    Or { src: Operand, dst: Operand },
+    And { src: Operand, dst: Operand },
+    Sbb { src: Operand, dst: Operand },
     Adc { src: Operand, dst: Operand },
     Mul { src: Operand },
     IMul { src: Operand },
@@ -42,6 +49,52 @@ pub enum Op {
     Push { src: Operand },
     Pop { dst: Operand },
     Cmp { dst: Operand, src: Operand },
+    Out,
     Ret,
     Halt,
+    Cbw,
+}
+
+impl Display for Op {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Op::Nop => write!(f, "nop"),
+            Op::Cli => write!(f, "cli"),
+            Op::Mov { dst, src } => write!(f, "mov {},{}", dst, src),
+            Op::Xor { dst, src } => write!(f, "xor {},{}", dst, src),
+            Op::MovSw { rep } => f.write_str(if *rep { "rep movsw" } else { "movsw" }),
+            Op::JmpFar { segment, offset } => write!(f, "jmpf {segment:04X}:{offset:04X}"),
+            Op::Int(int) => write!(f, "int {int:02X}h"),
+            Op::Call { addr } => write!(f, "call {addr}"),
+            Op::Test { op1, op2 } => write!(f, "test {op1},{op2}"),
+            Op::Cmp { dst, src } => write!(f, "cmp {dst},{src}"),
+            Op::Jnz { addr } => write!(f, "jnz {addr}"),
+            Op::Jz { addr } => write!(f, "jz {addr}"),
+            Op::Jnc { addr } => write!(f, "jnc {addr}"),
+            Op::Jc { addr } => write!(f, "jc {addr}"),
+            Op::Inc { dst } => write!(f, "inc {dst}"),
+            Op::Dec { dst } => write!(f, "dec {dst}"),
+            Op::Push { src } => write!(f, "push {src}"),
+            Op::Pop { dst } => write!(f, "pop {dst}"),
+            Op::And { src, dst } => write!(f, "and {dst},{src}"),
+            Op::Jmp { addr } => write!(f, "jmp {addr}"),
+            Op::Div { src } => write!(f, "div {src}"),
+            Op::Mul { src } => write!(f, "mul {src}"),
+            Op::Add { src, dst } => write!(f, "add {dst},{src}"),
+            Op::Sub { src, dst } => write!(f, "sub {dst},{src}"),
+            Op::Shl { dst, count } => write!(f, "shl {dst},{count}"),
+            Op::Shr { dst, count } => write!(f, "shr {dst},{count}"),
+            Op::Out => write!(f, "out"),
+            Op::Ret => write!(f, "ret"),
+            Op::Cld => write!(f, "cld"),
+            Op::Lea { src, dst } => write!(f, "lea, {dst},{src}"),
+            Op::Sti => write!(f, "sti"),
+            Op::Adc { dst, src } => write!(f, "adc {dst},{src}"),
+            Op::Lodsb => write!(f, "lodsb"),
+            Op::Halt => write!(f, "hlt"),
+            Op::Cbw => write!(f, "cbw"),
+            Op::MovSb { rep } => f.write_str(if *rep { "rep movsb" } else { "movsb" }),
+            _ => panic!("Not ready {:?}", self),
+        }
+    }
 }

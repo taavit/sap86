@@ -45,8 +45,8 @@ impl Bios {
                         let offset = cpu.registers.read_u16(Register16::Bx);
                         let segment = cpu.registers.read_segment(SegmentRegister::Es);
 
-                        println!(
-                            "Reading {count} sector(s) from {cylinder}:{head}:{sector} into {segment:04X}:{offset:04X} from {drive:02X}"
+                        eprintln!(
+                            "[EMU ] Reading {count} sector(s) from {cylinder}:{head}:{sector} into {segment:04X}:{offset:04X} from {drive:02X}"
                         );
                         let bytes = machine
                             .floppy

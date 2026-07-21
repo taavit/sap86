@@ -10,6 +10,10 @@ impl Memory {
         }
     }
 
+    pub fn dump(&self) -> &[u8] {
+        &self.memory
+    }
+
     pub fn read_u8(&self, addr: u32) -> u8 {
         self.memory[addr as usize]
     }

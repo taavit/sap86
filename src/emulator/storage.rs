@@ -1,11 +1,13 @@
 const SECTOR_SIZE: usize = 512;
 const HEADS: usize = 2;
-const SECTORS_PER_TRACK: usize = 9;
-const CYLINDERS: usize = 40;
-const FLOPPY_SIZE: usize = CYLINDERS * HEADS * SECTORS_PER_TRACK * SECTOR_SIZE;
+const SECTORS_PER_TRACK: usize = 18;
+const CYLINDERS: usize = 80;
+const FLOPPY_SIZE_525DD: usize = CYLINDERS * HEADS * SECTORS_PER_TRACK * SECTOR_SIZE;
+
+// const FLOPPY_SIZE_525DD: usize = CYLINDERS * HEADS * SECTORS_PER_TRACK * SECTOR_SIZE;
 
 pub struct Floppy525DD {
-    data: [u8; FLOPPY_SIZE],
+    data: [u8; FLOPPY_SIZE_525DD],
 }
 
 pub trait Floppy {
@@ -25,7 +27,7 @@ impl Floppy for Floppy525DD {
 impl Floppy525DD {
     pub fn new() -> Self {
         Self {
-            data: [0; FLOPPY_SIZE],
+            data: [0; FLOPPY_SIZE_525DD],
         }
     }
     fn chs_to_lba(c: u8, h: u8, s: u8) -> u32 {
