@@ -2,7 +2,6 @@ use crate::{
     emulator::{
         cpu::Cpu,
         machine::{CursorPosition, Machine},
-        storage::Floppy,
     },
     isa::registers::{Register8, Register16, SegmentRegister},
 };
@@ -35,25 +34,34 @@ impl Bios {
             0x13 => {
                 let op = cpu.registers.read_u8(Register8::Ah);
                 match op {
-                    0x00 => println!("Reset drive"),
+                    0x00 => {
+                        println!("[EMU ] Reset drive");
+                        cpu.flags.carry = false;
+                        cpu.registers.write_u8(Register8::Ah, 0);
+                    }
                     0x02 => {
                         let count = cpu.registers.read_u8(Register8::Al);
                         let cylinder = cpu.registers.read_u8(Register8::Ch);
                         let sector = cpu.registers.read_u8(Register8::Cl);
                         let drive = cpu.registers.read_u8(Register8::Dl);
                         let head = cpu.registers.read_u8(Register8::Dh);
-                        let offset = cpu.registers.read_u16(Register16::Bx);
+                        let mut offset = cpu.registers.read_u16(Register16::Bx);
                         let segment = cpu.registers.read_segment(SegmentRegister::Es);
+                        let Some(floppy) = machine.floppy.as_ref() else {
+                            eprintln!("[EMU ] Floppy not inserted");
+                            cpu.registers.write_u8(Register8::Ah, 0x01);
+                            return;
+                        };
 
                         eprintln!(
                             "[EMU ] Reading {count} sector(s) from {cylinder}:{head}:{sector} into {segment:04X}:{offset:04X} from {drive:02X}"
                         );
-                        let bytes = machine
-                            .floppy
-                            .read_chs_sector(cylinder, head, sector)
+                        let bytes = floppy
+                            .read_chs_sectors(cylinder, head, sector, count)
                             .to_vec();
                         for byte in bytes {
                             machine.write_physical_u8((segment as u32 * 16) + offset as u32, byte);
+                            offset += 1;
                         }
                         cpu.flags.carry = false;
                     }

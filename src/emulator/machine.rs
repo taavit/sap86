@@ -1,13 +1,13 @@
 use core::panic;
 
 use crate::{
-    emulator::{bios::Bios, cpu::Cpu, memory::Memory, storage::Floppy525DD},
+    emulator::{bios::Bios, cpu::Cpu, memory::Memory, storage::Floppy},
     isa::registers::Register16,
 };
 
 pub struct Machine {
     pub memory: Memory,
-    pub floppy: Floppy525DD,
+    pub floppy: Option<Box<dyn Floppy>>,
     pub video: VideoCard,
 }
 
@@ -35,11 +35,18 @@ impl VideoCard {
 }
 
 impl Machine {
-    pub fn boot(&mut self, cpu: &mut Cpu, device: &[u8]) {
-        self.floppy.insert(device);
-        self.memory.load_program(&device[..512]);
+    pub fn boot(&mut self, cpu: &mut Cpu) {
+        let Some(floppy) = self.floppy.as_ref() else {
+            panic!("Insert floppy!");
+        };
+        self.memory
+            .load_program(floppy.read_chs_sectors(0, 0, 1, 1));
         cpu.registers.set_ip(0x7C00);
         cpu.registers.write_u16(Register16::Sp, 0xFFFE);
+    }
+
+    pub fn insert_floppy(&mut self, floppy: Box<dyn Floppy>) {
+        self.floppy = Some(floppy);
     }
 
     pub fn handle_bios_interrupt(&mut self, cpu: &mut Cpu, int: u8) {

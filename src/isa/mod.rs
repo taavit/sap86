@@ -45,6 +45,13 @@ impl Display for Operand {
                                 write!(f, "[bp+{:04X}]", s.disp)
                             }
                         }
+                        EffectiveAddressBase::BxSi => {
+                            if s.disp == 0 {
+                                write!(f, "[bx+si]")
+                            } else {
+                                write!(f, "[bx+si+{:02X}]", s.disp)
+                            }
+                        }
                         _ => panic!("Not yet {:?}", s.base),
                     }
                 }
@@ -73,6 +80,20 @@ impl Display for Operand {
                                 write!(f, "[si]")
                             } else {
                                 write!(f, "[si+{:02X}]", s.disp)
+                            }
+                        }
+                        EffectiveAddressBase::BxSi => {
+                            if s.disp == 0 {
+                                write!(f, "[bx+si]")
+                            } else {
+                                write!(f, "[bx+si+{:02X}]", s.disp)
+                            }
+                        }
+                        EffectiveAddressBase::Di => {
+                            if s.disp == 0 {
+                                write!(f, "[di]")
+                            } else {
+                                write!(f, "[di+{:02X}]", s.disp)
                             }
                         }
                         _ => panic!("Not yet {:?}", s.base),

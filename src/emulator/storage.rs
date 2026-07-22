@@ -1,40 +1,51 @@
-const SECTOR_SIZE: usize = 512;
-const HEADS: usize = 2;
-const SECTORS_PER_TRACK: usize = 18;
-const CYLINDERS: usize = 80;
-const FLOPPY_SIZE_525DD: usize = CYLINDERS * HEADS * SECTORS_PER_TRACK * SECTOR_SIZE;
+pub struct GenericFloppy<
+    const CYLINDERS: usize,
+    const HEADS: usize,
+    const SECTORS_PER_TRACK: usize,
+    const SECTOR_SIZE: usize,
+> {
+    data: Vec<u8>,
+}
 
-// const FLOPPY_SIZE_525DD: usize = CYLINDERS * HEADS * SECTORS_PER_TRACK * SECTOR_SIZE;
+impl<
+    const CYLINDERS: usize,
+    const HEADS: usize,
+    const SECTORS_PER_TRACK: usize,
+    const SECTOR_SIZE: usize,
+> GenericFloppy<CYLINDERS, HEADS, SECTORS_PER_TRACK, SECTOR_SIZE>
+{
+    pub const CAPACITY: usize = CYLINDERS * HEADS * SECTORS_PER_TRACK * SECTOR_SIZE;
 
-pub struct Floppy525DD {
-    data: [u8; FLOPPY_SIZE_525DD],
+    fn chs_to_lba(&self, c: u8, h: u8, s: u8) -> usize {
+        let track_offset = (c as usize * HEADS + h as usize) * SECTORS_PER_TRACK;
+        let sector_offset = s as usize - 1;
+        (track_offset + sector_offset) * SECTOR_SIZE
+    }
+    pub fn from_image(image: &[u8]) -> Self {
+        Self {
+            data: image.to_vec(),
+        }
+    }
+}
+
+impl<
+    const CYLINDERS: usize,
+    const HEADS: usize,
+    const SECTORS_PER_TRACK: usize,
+    const SECTOR_SIZE: usize,
+> Floppy for GenericFloppy<CYLINDERS, HEADS, SECTORS_PER_TRACK, SECTOR_SIZE>
+{
+    fn read_chs_sectors(&self, c: u8, h: u8, s: u8, count: u8) -> &[u8] {
+        let start_lba = self.chs_to_lba(c, h, s);
+        let start_byte = start_lba;
+        let bytes_to_read = count as usize * SECTOR_SIZE;
+        &self.data[start_byte..start_byte + bytes_to_read]
+    }
 }
 
 pub trait Floppy {
-    fn read_chs_sector(&self, c: u8, h: u8, s: u8) -> &[u8];
-    fn reset_device(&mut self);
+    fn read_chs_sectors(&self, c: u8, h: u8, s: u8, count: u8) -> &[u8];
 }
 
-impl Floppy for Floppy525DD {
-    fn read_chs_sector(&self, c: u8, h: u8, s: u8) -> &[u8] {
-        let lba = Self::chs_to_lba(c, h, s) as usize;
-        let pos = lba * SECTOR_SIZE;
-        &self.data[pos..pos + SECTOR_SIZE]
-    }
-    fn reset_device(&mut self) {}
-}
-
-impl Floppy525DD {
-    pub fn new() -> Self {
-        Self {
-            data: [0; FLOPPY_SIZE_525DD],
-        }
-    }
-    fn chs_to_lba(c: u8, h: u8, s: u8) -> u32 {
-        (c as u32 * 2 + h as u32) * 9 + (s as u32 - 1)
-    }
-
-    pub fn insert(&mut self, data: &[u8]) {
-        self.data[..data.len()].copy_from_slice(data);
-    }
-}
+pub type Floppy525_160 = GenericFloppy<40, 1, 8, 512>;
+pub type Floppy525_360 = GenericFloppy<40, 2, 9, 512>;

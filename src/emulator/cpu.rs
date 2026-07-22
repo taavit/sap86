@@ -515,6 +515,36 @@ impl Cpu {
                 let value = self.registers.read_u8(Register8::Al);
                 machine.handle_pic_out(port, value);
             }
+            Op::Or { src, dst } => {
+                let src_val = self.get_operand_value(machine, &src);
+                let dst_val = self.get_operand_value(machine, &dst);
+
+                match dst {
+                    Operand::Register8(_) | Operand::Mem8(_) => {
+                        let result = (src_val as u8) | (dst_val as u8);
+
+                        self.flags.carry = false;
+                        self.flags.overflow = false;
+                        self.flags.zero = result == 0;
+                        self.flags.sign = result & 0x80 == 0;
+                        self.flags.parity = result.count_ones().is_multiple_of(2);
+
+                        self.set_operand_value(machine, &dst, result as u16);
+                    }
+                    Operand::Register16(_) | Operand::Mem16(_) => {
+                        let result = src_val | dst_val;
+
+                        self.flags.carry = false;
+                        self.flags.overflow = false;
+                        self.flags.zero = result == 0;
+                        self.flags.sign = result & 0x8000 == 0;
+                        self.flags.parity = (result as u8).count_ones().is_multiple_of(2);
+
+                        self.set_operand_value(machine, &dst, result);
+                    }
+                    _ => panic!("Invalid combination"),
+                }
+            }
             _ => panic!("Invalid instruction: {:?}", instruction),
         }
     }

@@ -63,6 +63,13 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
                 _ => unimplemented!(),
             }
         }
+        0x0A => {
+            let modrm = cpu.fetch_u8(machine);
+            let modrm = ModRm::from(modrm);
+            let src = decode_rm8(cpu, machine, &modrm, override_segment);
+            let dst = Operand::Register8(Register8::from(modrm.reg));
+            Op::Or { src, dst }
+        }
         0xC3 => Op::Ret,
         0xD0 => {
             let modrm = cpu.fetch_u8(machine);
@@ -136,6 +143,13 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
                 0b010 => Op::Adc { src, dst },
                 _ => panic!("Unhandled {}", modrm.reg),
             }
+        }
+        0x00 => {
+            let modrm = cpu.fetch_u8(machine);
+            let modrm = ModRm::from(modrm);
+            let src = Operand::Register8(Register8::from(modrm.reg));
+            let dst = decode_rm8(cpu, machine, &modrm, override_segment);
+            Op::Add { src, dst }
         }
         0x01 => {
             let modrm = cpu.fetch_u8(machine);
@@ -302,6 +316,14 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
         0x72 => Op::Jc {
             addr: Operand::RelAddress((cpu.fetch_u8(machine) as i8) as i16),
         },
+        0x30 => {
+            let modrm = ModRm::from(cpu.fetch_u8(machine));
+
+            let src = Operand::Register8(Register8::from(modrm.reg));
+            let dst = decode_rm8(cpu, machine, &modrm, override_segment);
+
+            Op::Xor { src, dst }
+        }
         0x31 => {
             let modrm = ModRm::from(cpu.fetch_u8(machine));
 

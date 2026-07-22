@@ -18,16 +18,8 @@ impl Memory {
         self.memory[addr as usize]
     }
 
-    pub fn read_i8(&self, addr: u32) -> i8 {
-        self.memory[addr as usize] as i8
-    }
-
     pub fn read_u16(&self, addr: u32) -> u16 {
         u16::from_le_bytes([self.memory[addr as usize], self.memory[addr as usize + 1]])
-    }
-
-    pub fn read_i16(&self, addr: u32) -> i16 {
-        i16::from_le_bytes([self.memory[addr as usize], self.memory[addr as usize + 1]])
     }
 
     pub fn write_u8(&mut self, addr: u32, value: u8) {

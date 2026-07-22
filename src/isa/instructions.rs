@@ -80,6 +80,7 @@ impl Display for Op {
             Op::Jmp { addr } => write!(f, "jmp {addr}"),
             Op::Div { src } => write!(f, "div {src}"),
             Op::Mul { src } => write!(f, "mul {src}"),
+            Op::IDiv { src } => write!(f, "idiv {src}"),
             Op::Add { src, dst } => write!(f, "add {dst},{src}"),
             Op::Sub { src, dst } => write!(f, "sub {dst},{src}"),
             Op::Shl { dst, count } => write!(f, "shl {dst},{count}"),
@@ -94,6 +95,7 @@ impl Display for Op {
             Op::Halt => write!(f, "hlt"),
             Op::Cbw => write!(f, "cbw"),
             Op::MovSb { rep } => f.write_str(if *rep { "rep movsb" } else { "movsb" }),
+            Op::Or { src, dst } => write!(f, "or {dst},{src}"),
             _ => panic!("Not ready {:?}", self),
         }
     }
