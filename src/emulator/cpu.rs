@@ -1,6 +1,6 @@
 use crate::{
     emulator::{
-        instruction::{exec_add, exec_sub, exec_xor},
+        instruction::{exec_adc, exec_add, exec_dec, exec_inc, exec_sub, exec_xor},
         machine::Machine,
     },
     isa::{
@@ -183,15 +183,7 @@ impl Cpu {
             }
             Op::Sub { src, dst } => exec_sub(&src, &dst, self, machine),
             Op::Add { src, dst } => exec_add(&src, &dst, self, machine),
-            Op::Adc { src, dst } => {
-                let src_val = self.get_operand_value(machine, &src);
-                let dst_val = self.get_operand_value(machine, &dst);
-                let (result, c) = dst_val.overflowing_add(src_val);
-                let (result, c2) = result.overflowing_add(if self.flags.carry { 1 } else { 0 });
-                self.flags.zero = result == 0;
-                self.flags.carry = c || c2;
-                self.set_operand_value(machine, &dst, result);
-            }
+            Op::Adc { src, dst } => exec_adc(&src, &dst, self, machine),
             Op::Xor { src, dst } => exec_xor(&src, &dst, self, machine),
             Op::And { src, dst } => {
                 let src_val = self.get_operand_value(machine, &src);
@@ -227,14 +219,15 @@ impl Cpu {
                     self.registers.set_ip(self.resolve_relative(target));
                 }
             }
-            Op::Inc { dst } => {
-                let v = self.get_operand_value(machine, &dst);
-                self.set_operand_value(machine, &dst, v.wrapping_add(1));
+            Op::Jg {
+                addr: Operand::RelAddress(target),
+            } => {
+                if !self.flags.zero && self.flags.overflow == self.flags.sign {
+                    self.registers.set_ip(self.resolve_relative(target));
+                }
             }
-            Op::Dec { dst } => {
-                let v = self.get_operand_value(machine, &dst);
-                self.set_operand_value(machine, &dst, v.wrapping_sub(1));
-            }
+            Op::Inc { dst } => exec_inc(&dst, self, machine),
+            Op::Dec { dst } => exec_dec(&dst, self, machine),
             Op::Jmp {
                 addr: Operand::RelAddress(target),
             } => {
@@ -315,14 +308,14 @@ impl Cpu {
                 let dividend = ((self.registers.read_u16(Register16::Dx) as u32) << 16)
                     | self.registers.read_u16(Register16::Ax) as u32;
                 let quotient = (dividend / divisor as u32) as u32;
-                let reminder = (dividend % divisor as u32) as u32;
+                let remainder = (dividend % divisor as u32) as u32;
 
                 if quotient > 0xFFFF {
                     panic!("Division overflow");
                 }
 
                 self.registers.write_u16(Register16::Ax, quotient as u16);
-                self.registers.write_u16(Register16::Dx, reminder as u16);
+                self.registers.write_u16(Register16::Dx, remainder as u16);
             }
             Op::IDiv { src } => {
                 let divisor = match src {
@@ -425,8 +418,12 @@ impl Cpu {
                 self.registers.write_segment(SegmentRegister::Cs, segment);
                 self.registers.set_ip(offset);
             }
-            Op::Shl { dst, count } => {
+            Op::Shl { dst, src } => {
                 let val = self.get_operand_value(machine, &dst);
+                let count = self.get_operand_value(machine, &src);
+                if count == 0 {
+                    return;
+                }
                 match dst {
                     Operand::Register8(_) | Operand::Mem8(_) => {
                         let mut v = val as u8;
@@ -459,8 +456,9 @@ impl Cpu {
                     _ => panic!("Invalid operand combination"),
                 }
             }
-            Op::Shr { dst, count } => {
+            Op::Shr { dst, src } => {
                 let val = self.get_operand_value(machine, &dst);
+                let count = self.get_operand_value(machine, &src);
                 match dst {
                     Operand::Register8(_) | Operand::Mem8(_) => {
                         let mut v = val as u8;

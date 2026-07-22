@@ -35,21 +35,28 @@ impl Display for Operand {
                             if s.disp == 0 {
                                 write!(f, "[bx]")
                             } else {
-                                write!(f, "[bx+{:04X}]", s.disp)
+                                write!(f, "[bx+0x{:04X}]", s.disp)
                             }
                         }
                         EffectiveAddressBase::Bp => {
                             if s.disp == 0 {
                                 write!(f, "[bp]")
                             } else {
-                                write!(f, "[bp+{:04X}]", s.disp)
+                                write!(f, "[bp+0x{:04X}]", s.disp)
                             }
                         }
                         EffectiveAddressBase::BxSi => {
                             if s.disp == 0 {
                                 write!(f, "[bx+si]")
                             } else {
-                                write!(f, "[bx+si+{:02X}]", s.disp)
+                                write!(f, "[bx+si+0x{:02X}]", s.disp)
+                            }
+                        }
+                        EffectiveAddressBase::Di => {
+                            if s.disp == 0 {
+                                write!(f, "[di]")
+                            } else {
+                                write!(f, "[di+0x{:02X}]", s.disp)
                             }
                         }
                         _ => panic!("Not yet {:?}", s.base),
@@ -65,35 +72,35 @@ impl Display for Operand {
                             if s.disp == 0 {
                                 write!(f, "[bx]")
                             } else {
-                                write!(f, "[bx+{:02X}]", s.disp)
+                                write!(f, "[bx+0x{:02X}]", s.disp)
                             }
                         }
                         EffectiveAddressBase::Bp => {
                             if s.disp == 0 {
                                 write!(f, "[bp]")
                             } else {
-                                write!(f, "[bp+{:02X}]", s.disp)
+                                write!(f, "[bp+0x{:02X}]", s.disp)
                             }
                         }
                         EffectiveAddressBase::Si => {
                             if s.disp == 0 {
                                 write!(f, "[si]")
                             } else {
-                                write!(f, "[si+{:02X}]", s.disp)
+                                write!(f, "[si+0x{:02X}]", s.disp)
                             }
                         }
                         EffectiveAddressBase::BxSi => {
                             if s.disp == 0 {
                                 write!(f, "[bx+si]")
                             } else {
-                                write!(f, "[bx+si+{:02X}]", s.disp)
+                                write!(f, "[bx+si+0x{:02X}]", s.disp)
                             }
                         }
                         EffectiveAddressBase::Di => {
                             if s.disp == 0 {
                                 write!(f, "[di]")
                             } else {
-                                write!(f, "[di+{:02X}]", s.disp)
+                                write!(f, "[di+0x{:02X}]", s.disp)
                             }
                         }
                         _ => panic!("Not yet {:?}", s.base),

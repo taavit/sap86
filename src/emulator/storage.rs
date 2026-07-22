@@ -49,3 +49,4 @@ pub trait Floppy {
 
 pub type Floppy525_160 = GenericFloppy<40, 1, 8, 512>;
 pub type Floppy525_360 = GenericFloppy<40, 2, 9, 512>;
+pub type Floppy35_144 = GenericFloppy<80, 2, 18, 512>;
