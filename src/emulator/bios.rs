@@ -27,7 +27,20 @@ impl Bios {
                         };
                         machine.video.set_cursor_position(cursor_position);
                     }
+                    0x03 => {
+                        let pos = machine.video.get_cursor_position();
+                        cpu.registers.write_u8(Register8::Dh, pos.row);
+                        cpu.registers.write_u8(Register8::Dl, pos.col);
+
+                        cpu.registers.write_u8(Register8::Ch, 6);
+                        cpu.registers.write_u8(Register8::Cl, 7);
+                    }
                     0x0E => print!("{}", cpu.registers.read_u8(Register8::Al) as char),
+                    0x0F => {
+                        cpu.registers.write_u8(Register8::Al, 0x03);
+                        cpu.registers.write_u8(Register8::Ah, 80);
+                        cpu.registers.write_u8(Register8::Bh, 0);
+                    }
                     _ => panic!("Unhandled interrupt {:02X}:{:02X}", int, op),
                 }
             }
@@ -41,8 +54,8 @@ impl Bios {
                     }
                     0x02 => {
                         let count = cpu.registers.read_u8(Register8::Al);
-                        let cylinder = cpu.registers.read_u8(Register8::Ch);
-                        let sector = cpu.registers.read_u8(Register8::Cl);
+                        let ch = cpu.registers.read_u8(Register8::Ch);
+                        let cl = cpu.registers.read_u8(Register8::Cl);
                         let drive = cpu.registers.read_u8(Register8::Dl);
                         let head = cpu.registers.read_u8(Register8::Dh);
                         let mut offset = cpu.registers.read_u16(Register16::Bx);
@@ -52,7 +65,8 @@ impl Bios {
                             cpu.registers.write_u8(Register8::Ah, 0x01);
                             return;
                         };
-
+                        let cylinder = (ch as u16) | (((cl as u16 & 0xC0) >> 6) << 8);
+                        let sector = cl & 0x3F;
                         eprintln!(
                             "[EMU ] Reading {count} sector(s) from {cylinder}:{head}:{sector} into {segment:04X}:{offset:04X} from {drive:02X}"
                         );

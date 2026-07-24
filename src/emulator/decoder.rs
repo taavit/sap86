@@ -4,7 +4,7 @@ use crate::{
     emulator::{cpu::Cpu, machine::Machine},
     isa::{
         EffectiveAddressBase, MemSpec, ModRm, Operand,
-        instructions::Op,
+        instructions::{FarTarget, Op},
         registers::{Register8, Register16, SegmentRegister},
     },
 };
@@ -19,10 +19,21 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
             v = cpu.fetch_u8(machine);
             override_segment = Some(SegmentRegister::Es)
         }
+        0x36 => {
+            v = cpu.fetch_u8(machine);
+            override_segment = Some(SegmentRegister::Ss)
+        }
         0x2E => {
             v = cpu.fetch_u8(machine);
             override_segment = Some(SegmentRegister::Cs)
         }
+        0x3E => {
+            v = cpu.fetch_u8(machine);
+            override_segment = Some(SegmentRegister::Ds)
+        }
+        _ => {}
+    }
+    match v {
         0xF3 => {
             rep = true;
             v = cpu.fetch_u8(machine);
@@ -31,11 +42,16 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
     }
     match v {
         0x90 => Op::Nop,
+        0xF8 => Op::Clc,
+        0xF9 => Op::Stc,
         0xFA => Op::Cli,
         0xFB => Op::Sti,
         0xFC => Op::Cld,
         0xFD => Op::Std,
-        0xAC => Op::Lodsb,
+        0xAC => Op::Lodsb {
+            rep,
+            override_segment,
+        },
         0xE8 => {
             let offset = cpu.fetch_u16(machine) as i16;
             Op::Call {
@@ -45,15 +61,38 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
         0xFF => {
             let modrm = cpu.fetch_u8(machine);
             let modrm = ModRm::from(modrm);
-            let src = decode_rm16(cpu, machine, &modrm, override_segment);
-
-            Op::Push { src }
+            let dst = decode_rm16(cpu, machine, &modrm, override_segment);
+            match modrm.reg {
+                0b000 => Op::Inc { dst },
+                0b001 => Op::Dec { dst },
+                0b010 => Op::Call { addr: dst },
+                0b100 => Op::Jmp { addr: dst },
+                0b101 => Op::JmpFar {
+                    target: FarTarget::Indirect { ptr: dst },
+                },
+                r => panic!("Invalid reg 0xFF /{r}"),
+            }
         }
         0xD1 => {
             let modrm = cpu.fetch_u8(machine);
             let modrm = ModRm::from(modrm);
             let dst = decode_rm16(cpu, machine, &modrm, override_segment);
             let src = Operand::Imm16(1);
+            match modrm.reg {
+                0b000 => Op::Rol { dst, src },
+                0b001 => Op::Ror { dst, src },
+                0b010 => Op::Rcl { dst, src },
+                0b011 => Op::Rcr { dst, src },
+                0b100 => Op::Shl { dst, src },
+                0b101 => Op::Shr { dst, src },
+                _ => unimplemented!(),
+            }
+        }
+        0xD2 => {
+            let modrm = cpu.fetch_u8(machine);
+            let modrm = ModRm::from(modrm);
+            let dst = decode_rm8(cpu, machine, &modrm, override_segment);
+            let src = Operand::Register8(Register8::Cl);
             match modrm.reg {
                 0b000 => Op::Rol { dst, src },
                 0b001 => Op::Ror { dst, src },
@@ -116,6 +155,10 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
                 _ => unreachable!("Invalid reg: {}", modrm.reg),
             }
         }
+        0x24 => Op::And {
+            src: Operand::Imm8(cpu.fetch_u8(machine)),
+            dst: Operand::Register8(Register8::Al),
+        },
         0x80 => {
             let modrm = cpu.fetch_u8(machine);
             let modrm = ModRm::from(modrm);
@@ -169,6 +212,13 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
             let dst = decode_rm16(cpu, machine, &modrm, override_segment);
             Op::Adc { src, dst }
         }
+        0x13 => {
+            let modrm = cpu.fetch_u8(machine);
+            let modrm = ModRm::from(modrm);
+            let dst = Operand::Register16(Register16::from(modrm.reg));
+            let src = decode_rm16(cpu, machine, &modrm, override_segment);
+            Op::Adc { src, dst }
+        }
         0x00 => {
             let modrm = cpu.fetch_u8(machine);
             let modrm = ModRm::from(modrm);
@@ -204,6 +254,12 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
                 dst: Operand::Register16(Register16::Ax),
             }
         }
+        0x06 => Op::Push {
+            src: Operand::SegmentRegister(SegmentRegister::Es),
+        },
+        0x07 => Op::Pop {
+            dst: Operand::SegmentRegister(SegmentRegister::Es),
+        },
         0x2B => {
             let modrm = cpu.fetch_u8(machine);
             let modrm = ModRm::from(modrm);
@@ -259,6 +315,15 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
                 dst: Operand::Register16(Register16::from(modrm.reg)),
                 src: decode_rm16(cpu, machine, &modrm, override_segment),
             }
+        }
+        0xC6 => {
+            let modrm = cpu.fetch_u8(machine);
+            let modrm = ModRm::from(modrm);
+            let imm = cpu.fetch_u8(machine);
+            assert!(modrm.reg == 0);
+            let dst = decode_rm8(cpu, machine, &modrm, override_segment);
+            let src = Operand::Imm8(imm);
+            Op::Mov { src, dst }
         }
         0x88 => {
             let modrm = cpu.fetch_u8(machine);
@@ -414,9 +479,54 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
             let dst = Operand::Register16(Register16::from(v & 7));
             Op::Pop { dst }
         }
+        0x86 => {
+            let modrm = cpu.fetch_u8(machine);
+            let modrm = ModRm::from(modrm);
+            Op::Xchg {
+                dst: decode_rm8(cpu, machine, &modrm, override_segment),
+                src: Operand::Register8(Register8::from(modrm.reg)),
+            }
+        }
+        0x87 => {
+            let modrm = cpu.fetch_u8(machine);
+            let modrm = ModRm::from(modrm);
+            Op::Xchg {
+                dst: decode_rm16(cpu, machine, &modrm, override_segment),
+                src: Operand::Register16(Register16::from(modrm.reg)),
+            }
+        }
+        0x16 => Op::Push {
+            src: Operand::SegmentRegister(SegmentRegister::Ss),
+        },
+        0x1E => Op::Push {
+            src: Operand::SegmentRegister(SegmentRegister::Ds),
+        },
+        0x1F => Op::Pop {
+            dst: Operand::SegmentRegister(SegmentRegister::Ds),
+        },
+        0xA0 => {
+            let dst = Operand::Register8(Register8::Al);
+            let src = Operand::Mem8(MemSpec {
+                base: EffectiveAddressBase::None,
+                disp: cpu.fetch_u16(machine) as i16,
+                is_direct: true,
+                override_segment,
+            });
+            Op::Mov { dst, src }
+        }
         0xA1 => {
             let dst = Operand::Register16(Register16::Ax);
             let src = Operand::Mem16(MemSpec {
+                base: EffectiveAddressBase::None,
+                disp: cpu.fetch_u16(machine) as i16,
+                is_direct: true,
+                override_segment,
+            });
+            Op::Mov { dst, src }
+        }
+        0xA2 => {
+            let src = Operand::Register8(Register8::Al);
+            let dst = Operand::Mem8(MemSpec {
                 base: EffectiveAddressBase::None,
                 disp: cpu.fetch_u16(machine) as i16,
                 is_direct: true,
@@ -434,12 +544,21 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
             });
             Op::Mov { dst, src }
         }
-        0xA4 => Op::MovSb { rep },
-        0xA5 => Op::MovSw { rep },
+        0xA4 => Op::MovSb {
+            rep,
+            segment_override: override_segment,
+        },
+        0xA5 => Op::MovSw {
+            rep,
+            segment_override: override_segment,
+        },
+        0xA6 => Op::Cmpsb { rep },
         0xEA => {
             let offset = cpu.fetch_u16(machine);
             let segment = cpu.fetch_u16(machine);
-            Op::JmpFar { segment, offset }
+            Op::JmpFar {
+                target: FarTarget::Direct { segment, offset },
+            }
         }
         0xF7 => {
             let modrm = ModRm::from(cpu.fetch_u8(machine));
@@ -479,6 +598,14 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
                 _ => panic!("Unhandled mode: {}", modrm.reg),
             }
         }
+        0x39 => {
+            let modrm = cpu.fetch_u8(machine);
+            let modrm = ModRm::from(modrm);
+            Op::Cmp {
+                dst: decode_rm16(cpu, machine, &modrm, override_segment),
+                src: Operand::Register16(Register16::from(modrm.reg)),
+            }
+        }
         0x3C => {
             let imm8 = cpu.fetch_u8(machine);
             Op::Cmp {
@@ -486,8 +613,35 @@ pub fn fetch_decode(cpu: &mut Cpu, machine: &mut Machine) -> Op {
                 src: Operand::Imm8(imm8),
             }
         }
-        0xEE => Op::Out,
+        0xE6 => {
+            let imm = Operand::Imm8(cpu.fetch_u8(machine));
+            Op::Out {
+                port: imm,
+                value: Operand::Register8(Register8::Al),
+            }
+        }
+        0xEE => Op::Out {
+            port: Operand::Register16(Register16::Dx),
+            value: Operand::Register8(Register8::Al),
+        },
         0x98 => Op::Cbw,
+        0xE0 => Op::LoopE {
+            addr: Operand::RelAddress(cpu.fetch_u8(machine) as i8 as i16),
+        },
+        0xE1 => Op::LoopNe {
+            addr: Operand::RelAddress(cpu.fetch_u8(machine) as i8 as i16),
+        },
+        0xE2 => Op::Loop {
+            addr: Operand::RelAddress(cpu.fetch_u8(machine) as i8 as i16),
+        },
+        0xC5 => {
+            let modrm = cpu.fetch_u8(machine);
+            let modrm = ModRm::from(modrm);
+            Op::Lds {
+                dst: Operand::Register16(Register16::from(modrm.reg)),
+                src: decode_rm16(cpu, machine, &modrm, override_segment),
+            }
+        }
         i => {
             let mem = machine.memory.dump();
             let mut f = File::create("dump.bin").unwrap();

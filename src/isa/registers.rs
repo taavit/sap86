@@ -103,7 +103,7 @@ impl Registers {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Register16 {
     Ax,
     Cx,
@@ -169,7 +169,7 @@ impl From<u8> for Register16 {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Register8 {
     Al,
     Cl,

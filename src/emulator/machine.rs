@@ -11,7 +11,7 @@ pub struct Machine {
     pub video: VideoCard,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct CursorPosition {
     pub page: u8,
     pub row: u8,
@@ -31,6 +31,10 @@ impl VideoCard {
 
     pub fn set_cursor_position(&mut self, cursor_position: CursorPosition) {
         self.cursor_position = cursor_position;
+    }
+
+    pub fn get_cursor_position(&self) -> CursorPosition {
+        self.cursor_position
     }
 }
 
@@ -53,7 +57,7 @@ impl Machine {
         Bios::handle_interrupt(int, cpu, self);
     }
 
-    pub fn handle_pic_out(&mut self, port: u16, value: u8) {
+    pub fn handle_out(&mut self, port: u16, value: u8) {
         eprintln!("[OUT] Port 0x{port:04X} <- {value}");
     }
 

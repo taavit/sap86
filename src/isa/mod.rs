@@ -6,7 +6,7 @@ pub mod flags;
 pub mod instructions;
 pub mod registers;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Operand {
     Register8(Register8),
     Register16(Register16),
@@ -170,7 +170,7 @@ impl From<u8> for EffectiveAddressBase {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct MemSpec {
     pub base: EffectiveAddressBase,
     /// Displacement

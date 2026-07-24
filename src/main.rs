@@ -44,13 +44,13 @@ fn main() {
         let segment = cpu.registers.read_segment(SegmentRegister::Cs);
         let offset = cpu.registers.ip();
         let instruction = fetch_decode(&mut cpu, &mut machine);
-        eprintln!("[{segment:04X}:{offset:04X}] {}", instruction);
+        // eprintln!("[{segment:04X}:{offset:04X}] {}", instruction);
         cpu.execute(&mut machine, instruction);
         if cpu.halted {
             break;
         }
         if i % 100 == 0 {
-            io::stdin().read_line(&mut s).unwrap();
+            // io::stdin().read_line(&mut s).unwrap();
         }
         i += 1;
     }
