@@ -6,7 +6,7 @@ pub mod flags;
 pub mod instructions;
 pub mod registers;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Operand {
     Register8(Register8),
     Register16(Register16),
@@ -14,7 +14,8 @@ pub enum Operand {
     Imm8(u8),
     Mem8(MemSpec),
     Mem16(MemSpec),
-    RelAddress(i16),
+    RelAddress16(i16),
+    RelAddress8(i8),
     SegmentRegister(SegmentRegister),
 }
 
@@ -107,7 +108,8 @@ impl Display for Operand {
                     }
                 }
             }
-            Operand::RelAddress(addr) => write!(f, "0x{addr:04X}"),
+            Operand::RelAddress16(addr) => write!(f, "0x{addr:04X}"),
+            Operand::RelAddress8(addr) => write!(f, "0x{addr:02X}"),
         }
     }
 }
@@ -141,7 +143,7 @@ impl From<u8> for ModRm {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum EffectiveAddressBase {
     BxSi,
     BxDi,
@@ -170,7 +172,7 @@ impl From<u8> for EffectiveAddressBase {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct MemSpec {
     pub base: EffectiveAddressBase,
     /// Displacement

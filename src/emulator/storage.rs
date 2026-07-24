@@ -39,7 +39,16 @@ impl<
         let start_lba = self.chs_to_lba(c, h, s);
         let start_byte = start_lba;
         let bytes_to_read = count as usize * SECTOR_SIZE;
-        &self.data[start_byte..start_byte + bytes_to_read]
+        let res = &self.data[start_byte..start_byte + bytes_to_read];
+        // println!();
+        // for (i, byte) in res.iter().enumerate() {
+        //     print!("{byte:02X} ");
+        //     if i.is_multiple_of(12) {
+        //         println!();
+        //     }
+        // }
+        // println!();
+        res
     }
 }
 

@@ -17,7 +17,7 @@ pub fn exec_xor(src: &Operand, dst: &Operand, cpu: &mut Cpu, machine: &mut Machi
             cpu.flags.sign = (result & 0x80) != 0;
             cpu.flags.overflow = false;
             cpu.flags.parity = result.count_ones().is_multiple_of(2);
-            cpu.set_operand_value(machine, dst, result as u16);
+            cpu.set_operand_value_8(machine, dst, result).unwrap();
         }
         Operand::Register16(_) | Operand::Mem16(_) => {
             let result = dst_val ^ src_val;
@@ -26,7 +26,7 @@ pub fn exec_xor(src: &Operand, dst: &Operand, cpu: &mut Cpu, machine: &mut Machi
             cpu.flags.sign = (result & 0x8000) != 0;
             cpu.flags.overflow = false;
             cpu.flags.parity = (result as u8).count_ones().is_multiple_of(2);
-            cpu.set_operand_value(machine, dst, result);
+            cpu.set_operand_value_16(machine, dst, result).unwrap();
         }
         _ => panic!("Invalid combination"),
     }

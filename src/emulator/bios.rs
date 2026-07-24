@@ -35,6 +35,61 @@ impl Bios {
                         cpu.registers.write_u8(Register8::Ch, 6);
                         cpu.registers.write_u8(Register8::Cl, 7);
                     }
+                    0x09 => {
+                        let character = cpu.registers.read_u8(Register8::Al) as char;
+                        let count = cpu.registers.read_u16(Register16::Cx);
+                        let attribute = cpu.registers.read_u8(Register8::Bl);
+
+                        // Parse the VGA attribute byte
+                        let fg = attribute & 0x0F;
+                        let bg = (attribute & 0x70) >> 4;
+                        let blink = (attribute & 0x80) != 0;
+
+                        // Map standard CGA/VGA colors to ANSI foreground codes
+                        let ansi_fg = match fg {
+                            0 => 30,  // Black
+                            1 => 34,  // Blue
+                            2 => 32,  // Green
+                            3 => 36,  // Cyan
+                            4 => 31,  // Red
+                            5 => 35,  // Magenta
+                            6 => 33,  // Brown
+                            7 => 37,  // Light Gray
+                            8 => 90,  // Dark Gray (Bright Black)
+                            9 => 94,  // Bright Blue
+                            10 => 92, // Bright Green
+                            11 => 96, // Bright Cyan
+                            12 => 91, // Bright Red
+                            13 => 95, // Bright Magenta
+                            14 => 93, // Yellow (Bright Brown)
+                            15 => 97, // White (Bright Light Gray)
+                            _ => 37,
+                        };
+
+                        // Map standard CGA/VGA colors to ANSI background codes
+                        let ansi_bg = match bg {
+                            0 => 40, // Black
+                            1 => 44, // Blue
+                            2 => 42, // Green
+                            3 => 46, // Cyan
+                            4 => 41, // Red
+                            5 => 45, // Magenta
+                            6 => 43, // Brown
+                            7 => 47, // Light Gray
+                            _ => 40,
+                        };
+
+                        // Add ANSI blink modifier if the highest bit was set
+                        let blink_code = if blink { ";5" } else { "" };
+
+                        // Construct the escape sequence
+                        let color_prefix = format!("\x1b[{};{}{}m", ansi_fg, ansi_bg, blink_code);
+                        let reset_suffix = "\x1b[0m";
+
+                        for _ in 0..count {
+                            print!("{}{}{}", color_prefix, character, reset_suffix);
+                        }
+                    }
                     0x0E => print!("{}", cpu.registers.read_u8(Register8::Al) as char),
                     0x0F => {
                         cpu.registers.write_u8(Register8::Al, 0x03);
@@ -43,6 +98,26 @@ impl Bios {
                     }
                     _ => panic!("Unhandled interrupt {:02X}:{:02X}", int, op),
                 }
+            }
+            0x11 => {
+                // INT 11h - BIOS Equipment Determination
+                // Returns equipment list in the AX register:
+                // Bit 0    : 1 = Floppy drive(s) installed
+                // Bit 1    : 0 = Math coprocessor not installed
+                // Bits 2-3 : System RAM banks (legacy)
+                // Bits 4-5 : Initial video mode (10 = 80x25 Color)
+                // Bits 6-7 : Number of floppy drives minus 1 (00 = 1 drive)
+                // Bit 8    : 0 = DMA present
+                // Bits 9-11: Number of serial ports (000 = 0 ports)
+                // Bit 12   : 0 = No game port
+                // Bit 13   : 0 = No internal modem
+                // Bits14-15: Number of parallel ports (00 = 0 ports)
+
+                // 0x0021 corresponds to: 1 Floppy Drive, 80x25 Color Video
+                cpu.registers.write_u16(Register16::Ax, 0x0021);
+            }
+            0x12 => {
+                cpu.registers.write_u16(Register16::Ax, 0x0280);
             }
             0x13 => {
                 let op = cpu.registers.read_u8(Register8::Ah);
@@ -65,7 +140,7 @@ impl Bios {
                             cpu.registers.write_u8(Register8::Ah, 0x01);
                             return;
                         };
-                        let cylinder = (ch as u16) | (((cl as u16 & 0xC0) >> 6) << 8);
+                        let cylinder = ((cl as u16 & 0xC0) << 2) | ch as u16;
                         let sector = cl & 0x3F;
                         eprintln!(
                             "[EMU ] Reading {count} sector(s) from {cylinder}:{head}:{sector} into {segment:04X}:{offset:04X} from {drive:02X}"
@@ -78,6 +153,7 @@ impl Bios {
                             offset += 1;
                         }
                         cpu.flags.carry = false;
+                        cpu.registers.write_u8(Register8::Ah, 0);
                     }
                     _ => panic!("Unhandled interrupt {:02X}:{:02X}", int, op),
                 }

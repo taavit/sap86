@@ -139,6 +139,7 @@ pub enum Op {
         target: FarTarget,
     },
     Int(u8),
+    RetFar,
     Call {
         addr: Operand,
     },
@@ -235,6 +236,7 @@ impl Display for Op {
             Op::Out { port, value } => write!(f, "out {port},{value}"),
             Op::Ret => write!(f, "ret"),
             Op::Cld => write!(f, "cld"),
+            Op::Clc => write!(f, "clc"),
             Op::Lea { src, dst } => write!(f, "lea, {dst},{src}"),
             Op::Sti => write!(f, "sti"),
             Op::Adc { dst, src } => write!(f, "adc {dst},{src}"),
@@ -249,6 +251,12 @@ impl Display for Op {
                     write!(f, "rep ")?;
                 }
                 write!(f, "lodsb")
+            }
+            Op::Cmpsb { rep } => {
+                if *rep {
+                    write!(f, "rep ")?;
+                }
+                write!(f, "cmpsb")
             }
             Op::Halt => write!(f, "hlt"),
             Op::Cbw => write!(f, "cbw"),
@@ -268,6 +276,9 @@ impl Display for Op {
             Op::Ror { dst, src } => write!(f, "ror {dst},{src}"),
             Op::Xchg { dst, src } => write!(f, "xchg {dst},{src}"),
             Op::Loop { addr } => write!(f, "loop {addr}"),
+            Op::Lds { dst, src } => write!(f, "lds {dst},{src}"),
+            Op::RetFar => write!(f, "retf"),
+            Op::Sbb { src, dst } => write!(f, "sbb {dst},{src}"),
             _ => panic!("Not ready {:?}", self),
         }
     }
