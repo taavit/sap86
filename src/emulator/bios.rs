@@ -1,3 +1,5 @@
+use std::time::SystemTime;
+
 use crate::{
     emulator::{
         cpu::Cpu,
@@ -9,6 +11,17 @@ use crate::{
 pub struct Bios;
 
 impl Bios {
+    pub fn init_memory(machine: &mut Machine) {
+        let mut offset = 0xE000;
+        machine.write_physical_u8(Cpu::calculate_physical_address(0xF000, offset), 8);
+        machine.write_physical_u8(Cpu::calculate_physical_address(0xF000, offset + 1), 0xFC);
+        machine.write_physical_u8(Cpu::calculate_physical_address(0xF000, offset + 2), 0);
+        machine.write_physical_u8(Cpu::calculate_physical_address(0xF000, offset + 3), 1);
+        machine.write_physical_u8(Cpu::calculate_physical_address(0xF000, offset + 4), 0);
+        machine.write_physical_u8(Cpu::calculate_physical_address(0xF000, offset + 5), 0);
+        machine.write_physical_u8(Cpu::calculate_physical_address(0xF000, offset + 6), 0);
+        machine.write_physical_u8(Cpu::calculate_physical_address(0xF000, offset + 7), 0);
+    }
     pub fn handle_interrupt(int: u8, cpu: &mut Cpu, machine: &mut Machine) {
         match int {
             0x10 => {
@@ -154,6 +167,88 @@ impl Bios {
                         }
                         cpu.flags.carry = false;
                         cpu.registers.write_u8(Register8::Ah, 0);
+                    }
+                    0x08 => {
+                        let drive = cpu.registers.read_u8(Register8::Dl);
+                        cpu.registers.write_u8(Register8::Ah, 0);
+                        cpu.registers.write_u8(Register8::Al, 0);
+                        cpu.flags.carry = false;
+                        cpu.registers.write_u8(Register8::Ch, 80);
+                        cpu.registers.write_u8(Register8::Cl, 18);
+                        cpu.registers.write_u8(Register8::Dh, 2);
+                        cpu.registers.write_u8(Register8::Dl, 1);
+                        eprintln!("Reading drive param. Drive: {drive:02X}")
+                    }
+                    0x15 => {
+                        let drive = cpu.registers.read_u8(Register8::Dl);
+                        cpu.flags.carry = false;
+                        match drive {
+                            0 => {
+                                cpu.registers.write_u8(Register8::Ah, 1);
+                            }
+                            _ => {
+                                cpu.registers.write_u8(Register8::Ah, 0);
+                            }
+                        }
+
+                        eprintln!("[{int:02X}h:{op:02X}h]Reading drive size. Drive: {drive:02X}");
+                    }
+                    _ => panic!("Unhandled interrupt {:02X}:{:02X}", int, op),
+                }
+            }
+            0x14 => {
+                let op = cpu.registers.read_u8(Register8::Ah);
+                match op {
+                    0x00 => {
+                        cpu.registers.write_u8(Register8::Ah, 0);
+                        cpu.registers.write_u8(Register8::Al, 0);
+                    }
+                    _ => panic!("Unhandled interrupt {:02X}:{:02X}", int, op),
+                }
+            }
+            0x15 => {
+                let op = cpu.registers.read_u8(Register8::Ah);
+                match op {
+                    0xC0 => {
+                        cpu.registers.write_segment(SegmentRegister::Es, 0xF000);
+                        cpu.registers.write_u16(Register16::Bx, 0xE000);
+                        cpu.registers.write_u8(Register8::Ah, 0);
+                        cpu.registers.write_u8(Register8::Al, 0);
+                        cpu.flags.carry = false;
+                    }
+                    _ => panic!("Unhandled interrupt {:02X}:{:02X}", int, op),
+                }
+            }
+            0x17 => {
+                let op = cpu.registers.read_u8(Register8::Ah);
+                match op {
+                    0x01 => {
+                        // cpu.registers.write_u8(Register8::Ah, 0);
+                        // cpu.registers.write_u8(Register8::Al, 0);
+                    }
+                    _ => panic!("Unhandled interrupt {:02X}:{:02X}", int, op),
+                }
+            }
+            0x1A => {
+                let op = cpu.registers.read_u8(Register8::Ah);
+                match op {
+                    0x00 => {
+                        cpu.registers.write_u16(Register16::Cx, 0x0F);
+                        cpu.registers.write_u16(Register16::Dx, 0x34);
+                        cpu.registers.write_u8(Register8::Al, 0x03);
+                    }
+                    0x02 => {
+                        cpu.registers.write_u8(Register8::Ch, 0xA4);
+                        cpu.registers.write_u8(Register8::Cl, 0x24);
+                        cpu.registers.write_u8(Register8::Dh, 0x00);
+                        cpu.registers.write_u8(Register8::Dl, 0x00);
+                    }
+                    0x04 => {
+                        cpu.registers.write_u8(Register8::Ch, 0x15);
+                        cpu.registers.write_u8(Register8::Cl, 0x1A);
+                        cpu.registers.write_u8(Register8::Dh, 0x07);
+                        cpu.registers.write_u8(Register8::Dl, 0x24);
+                        cpu.flags.carry = false;
                     }
                     _ => panic!("Unhandled interrupt {:02X}:{:02X}", int, op),
                 }

@@ -60,6 +60,13 @@ impl Display for Operand {
                                 write!(f, "[di+0x{:02X}]", s.disp)
                             }
                         }
+                        EffectiveAddressBase::Si => {
+                            if s.disp == 0 {
+                                write!(f, "[si]")
+                            } else {
+                                write!(f, "[si+0x{:02X}]", s.disp)
+                            }
+                        }
                         _ => panic!("Not yet {:?}", s.base),
                     }
                 }

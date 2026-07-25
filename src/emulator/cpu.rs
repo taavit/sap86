@@ -34,7 +34,7 @@ impl Cpu {
         }
     }
 
-    fn calculate_physical_address(segment: u16, offset: u16) -> u32 {
+    pub fn calculate_physical_address(segment: u16, offset: u16) -> u32 {
         (((segment as u32) << 4) + offset as u32) & 0xFFFFF
     }
 
@@ -231,6 +231,20 @@ impl Cpu {
                     self.registers.set_ip(self.resolve_relative(target));
                 }
             }
+            Op::Jbe {
+                addr: Operand::RelAddress16(target),
+            } => {
+                if self.flags.zero || self.flags.carry {
+                    self.registers.set_ip(self.resolve_relative(target));
+                }
+            }
+            Op::Jnbe {
+                addr: Operand::RelAddress16(target),
+            } => {
+                if !self.flags.zero && !self.flags.carry {
+                    self.registers.set_ip(self.resolve_relative(target));
+                }
+            }
             Op::Call {
                 addr: Operand::RelAddress16(target),
             } => {
@@ -411,7 +425,7 @@ impl Cpu {
                 dst,
                 src: Operand::Mem16(spec),
             } => {
-                let addr = self.resolve_physcial_address(&spec);
+                let addr = self.resolve_physical_address(&spec);
                 let offset = machine.read_physical_u16(addr);
                 let segment = machine.read_physical_u16(addr + 2);
 
@@ -639,7 +653,7 @@ impl Cpu {
                 FarTarget::Indirect {
                     ptr: Operand::Mem16(mem),
                 } => {
-                    let addr = self.resolve_physcial_address(&mem);
+                    let addr = self.resolve_physical_address(&mem);
                     let segment = machine.read_physical_u16(addr.wrapping_add(2));
                     let offset = machine.read_physical_u16(addr);
                     self.registers.write_segment(SegmentRegister::Cs, segment);
@@ -726,7 +740,91 @@ impl Cpu {
                     _ => panic!("Invalid operand combination"),
                 }
             }
+            Op::Rol { dst, src } => {
+                let val = self.get_operand_value(machine, &dst);
+                let count = self.get_operand_value(machine, &src);
+                if count == 0 {
+                    return;
+                }
+                match dst {
+                    Operand::Register8(_) | Operand::Mem8(_) => {
+                        let mut v = val as u8;
+                        for _ in 0..count {
+                            let msb = (v & 0x80) != 0;
+                            v = v.rotate_left(1);
+                            self.flags.carry = msb;
+                        }
+                        if count == 1 {
+                            let new_msb = (v & 0x80) != 0;
+                            self.flags.overflow = new_msb ^ self.flags.carry;
+                        }
+                        self.set_operand_value_8(machine, &dst, v).unwrap();
+                    }
+                    Operand::Register16(_) | Operand::Mem16(_) => {
+                        let mut v = val;
+                        for _ in 0..count {
+                            let msb = (v & 0x8000) != 0;
+                            v = v.rotate_left(1);
+                            self.flags.carry = msb;
+                        }
+                        if count == 1 {
+                            let new_msb = (v & 0x8000) != 0;
+                            self.flags.overflow = new_msb ^ self.flags.carry;
+                        }
+                        self.set_operand_value_16(machine, &dst, v).unwrap();
+                    }
+                    _ => panic!("Invalid operand combination"),
+                }
+            }
+            Op::Rcr { dst, src } => {
+                let val = self.get_operand_value(machine, &dst);
+                let count = self.get_operand_value(machine, &src);
+                if count == 0 {
+                    return;
+                }
+                match dst {
+                    Operand::Register8(_) | Operand::Mem8(_) => {
+                        let mut v = val as u8;
+                        for _ in 0..count {
+                            let old_cf = self.flags.carry;
+                            let new_cf = (v & 1) != 0;
+                            v >>= 1;
+                            if old_cf {
+                                v |= 0x80;
+                            }
+                            self.flags.carry = new_cf;
+                        }
+                        if count == 1 {
+                            let msb = (v >> 7) & 1;
+                            let next = (v >> 6) & 1;
+                            self.flags.overflow = (msb ^ next) != 0;
+                        }
+                        self.set_operand_value_8(machine, &dst, v).unwrap();
+                    }
+                    Operand::Register16(_) | Operand::Mem16(_) => {
+                        let mut v = val;
+                        for _ in 0..count {
+                            let old_cf = self.flags.carry;
+                            let new_cf = (v & 1) != 0;
+                            v >>= 1;
+                            if old_cf {
+                                v |= 0x8000;
+                            }
+                            self.flags.carry = new_cf;
+                        }
+                        if count == 1 {
+                            let msb = (v >> 15) & 1;
+                            let next = (v >> 14) & 1;
+                            self.flags.overflow = (msb ^ next) != 0;
+                        }
+                        self.set_operand_value_16(machine, &dst, v).unwrap();
+                    }
+                    _ => panic!("Invalid operand combination"),
+                }
+            }
             Op::Nop => {}
+            Op::Stosb { rep } => exec_stosb(self, machine, rep),
+            Op::Stosw { rep } => exec_stosw(self, machine, rep),
             Op::Lodsb {
                 rep,
                 override_segment,
@@ -741,10 +839,35 @@ impl Cpu {
                     exec_lodsb(self, machine, override_segment);
                 }
             }
+            Op::Lodsw {
+                rep,
+                override_segment,
+            } => {
+                if rep {
+                    while self.registers.read_u16(Register16::Cx) != 0 {
+                        exec_lodsw(self, machine, override_segment);
+                        let cx = self.registers.read_u16(Register16::Cx);
+                        self.registers.write_u16(Register16::Cx, cx.wrapping_sub(1));
+                    }
+                } else {
+                    exec_lodsw(self, machine, override_segment);
+                }
+            }
             Op::Out { port, value } => {
                 let port = self.get_operand_value(machine, &port);
                 let value = self.get_operand_value(machine, &value);
                 machine.handle_out(port, value as u8);
+            }
+            Op::In { port, dst } => {
+                let port = self.get_operand_value(machine, &port);
+                let data = machine.handle_in(port);
+
+                match dst {
+                    Operand::Register8(Register8::Al) => {
+                        self.registers.write_u8(Register8::Al, data);
+                    }
+                    _ => panic!("Invalid IN dest"),
+                }
             }
             Op::Cmpsb { rep } => {
                 if rep {
@@ -837,7 +960,7 @@ impl Cpu {
             offset,
         ))
     }
-    pub fn resolve_physcial_address(&self, spec: &MemSpec) -> u32 {
+    pub fn resolve_physical_address(&self, spec: &MemSpec) -> u32 {
         let offset = self.resolve_address(spec);
 
         let segment = if let Some(segment) = spec.override_segment {
@@ -852,7 +975,7 @@ impl Cpu {
     }
 
     pub fn read_mem16(&self, machine: &Machine, spec: &MemSpec) -> u16 {
-        machine.read_physical_u16(self.resolve_physcial_address(spec))
+        machine.read_physical_u16(self.resolve_physical_address(spec))
     }
 
     pub fn write_mem8(&self, machine: &mut Machine, spec: &MemSpec, value: u8) {
@@ -958,6 +1081,24 @@ fn exec_lodsb(cpu: &mut Cpu, machine: &mut Machine, override_segment: Option<Seg
             .write_u16(Register16::Si, offset.wrapping_add(1));
     }
 }
+
+fn exec_lodsw(cpu: &mut Cpu, machine: &mut Machine, override_segment: Option<SegmentRegister>) {
+    let offset = cpu.registers.read_u16(Register16::Si);
+    let segment = cpu
+        .registers
+        .read_segment(override_segment.unwrap_or(SegmentRegister::Ds));
+    let address = Cpu::calculate_physical_address(segment, offset);
+    let value = machine.read_physical_u16(address);
+    cpu.registers.write_u16(Register16::Ax, value);
+    if cpu.flags.direction {
+        cpu.registers
+            .write_u16(Register16::Si, offset.wrapping_sub(2));
+    } else {
+        cpu.registers
+            .write_u16(Register16::Si, offset.wrapping_add(2));
+    }
+}
+
 fn exec_cmpsb(cpu: &mut Cpu, machine: &mut Machine) {
     let left = cpu.resolve_direct_address(SegmentRegister::Ds, Register16::Si);
     let right = cpu.resolve_direct_address(SegmentRegister::Es, Register16::Di);
@@ -981,4 +1122,50 @@ fn exec_cmpsb(cpu: &mut Cpu, machine: &mut Machine) {
         .write_u16(Register16::Si, si.wrapping_add_signed(delta));
     cpu.registers
         .write_u16(Register16::Di, di.wrapping_add_signed(delta));
+}
+
+fn exec_stosb(cpu: &mut Cpu, machine: &mut Machine, rep: bool) {
+    let step = if cpu.flags.direction { -1 } else { 1 };
+    let count = if rep {
+        cpu.registers.read_u16(Register16::Cx)
+    } else {
+        1
+    };
+    let value = cpu.registers.read_u8(Register8::Al);
+    let segment = cpu.registers.read_segment(SegmentRegister::Es);
+
+    for _ in 0..count {
+        let offset = cpu.registers.read_u16(Register16::Di);
+        let address = Cpu::calculate_physical_address(segment, offset);
+        machine.write_physical_u8(address, value);
+        cpu.registers
+            .write_u16(Register16::Di, offset.wrapping_add_signed(step));
+    }
+
+    if rep {
+        cpu.registers.write_u16(Register16::Cx, 0);
+    }
+}
+
+fn exec_stosw(cpu: &mut Cpu, machine: &mut Machine, rep: bool) {
+    let step = if cpu.flags.direction { -2 } else { 2 };
+    let count = if rep {
+        cpu.registers.read_u16(Register16::Cx)
+    } else {
+        1
+    };
+    let value = cpu.registers.read_u16(Register16::Ax);
+    let segment = cpu.registers.read_segment(SegmentRegister::Es);
+
+    for _ in 0..count {
+        let offset = cpu.registers.read_u16(Register16::Di);
+        let address = Cpu::calculate_physical_address(segment, offset);
+        machine.write_physical_u16(address, value);
+        cpu.registers
+            .write_u16(Register16::Di, offset.wrapping_add_signed(step));
+    }
+
+    if rep {
+        cpu.registers.write_u16(Register16::Cx, 0);
+    }
 }

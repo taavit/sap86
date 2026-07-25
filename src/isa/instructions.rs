@@ -17,7 +17,17 @@ pub enum Op {
     Cld,
     Clc,
     Stc,
+    Stosb {
+        rep: bool,
+    },
+    Stosw {
+        rep: bool,
+    },
     Lodsb {
+        rep: bool,
+        override_segment: Option<SegmentRegister>,
+    },
+    Lodsw {
         rep: bool,
         override_segment: Option<SegmentRegister>,
     },
@@ -32,6 +42,12 @@ pub enum Op {
         addr: Operand,
     },
     Jg {
+        addr: Operand,
+    },
+    Jbe {
+        addr: Operand,
+    },
+    Jnbe {
         addr: Operand,
     },
     Jmp {
@@ -169,6 +185,10 @@ pub enum Op {
         port: Operand,
         value: Operand,
     },
+    In {
+        port: Operand,
+        dst: Operand,
+    },
     Ret,
     Halt,
     Cbw,
@@ -219,6 +239,8 @@ impl Display for Op {
             Op::Jnz { addr } => write!(f, "jnz {addr}"),
             Op::Jz { addr } => write!(f, "jz {addr}"),
             Op::Jnc { addr } => write!(f, "jnc {addr}"),
+            Op::Jbe { addr } => write!(f, "jbe {addr}"),
+            Op::Jnbe { addr } => write!(f, "jnbe {addr}"),
             Op::Jc { addr } => write!(f, "jc {addr}"),
             Op::Inc { dst } => write!(f, "inc {dst}"),
             Op::Dec { dst } => write!(f, "dec {dst}"),
@@ -234,11 +256,13 @@ impl Display for Op {
             Op::Shl { dst, src } => write!(f, "shl {dst},{src}"),
             Op::Shr { dst, src } => write!(f, "shr {dst},{src}"),
             Op::Out { port, value } => write!(f, "out {port},{value}"),
+            Op::In { port, dst } => write!(f, "out {port},{dst}"),
             Op::Ret => write!(f, "ret"),
             Op::Cld => write!(f, "cld"),
             Op::Clc => write!(f, "clc"),
             Op::Lea { src, dst } => write!(f, "lea, {dst},{src}"),
             Op::Sti => write!(f, "sti"),
+            Op::Stc => write!(f, "stc"),
             Op::Adc { dst, src } => write!(f, "adc {dst},{src}"),
             Op::Lodsb {
                 rep,
@@ -252,6 +276,30 @@ impl Display for Op {
                 }
                 write!(f, "lodsb")
             }
+            Op::Stosb { rep } => {
+                if *rep {
+                    write!(f, "rep ")?;
+                }
+                write!(f, "stosb")
+            }
+            Op::Stosw { rep } => {
+                if *rep {
+                    write!(f, "rep ")?;
+                }
+                write!(f, "stosw")
+            }
+            Op::Lodsw {
+                rep,
+                override_segment,
+            } => {
+                if let Some(segment) = override_segment {
+                    write!(f, "{segment}: ")?;
+                }
+                if *rep {
+                    write!(f, "rep ")?;
+                }
+                write!(f, "lodsw")
+            }
             Op::Cmpsb { rep } => {
                 if *rep {
                     write!(f, "rep ")?;
@@ -260,6 +308,8 @@ impl Display for Op {
             }
             Op::Halt => write!(f, "hlt"),
             Op::Cbw => write!(f, "cbw"),
+            Op::Rol { dst, src } => write!(f, "rol {dst},{src}"),
+            Op::Rcr { dst, src } => write!(f, "rcr {dst},{src}"),
             Op::MovSb {
                 rep,
                 segment_override,

@@ -1,2 +1,5 @@
 /target
 p2
+*.IMG
+*.img
+

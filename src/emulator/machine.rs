@@ -40,6 +40,7 @@ impl VideoCard {
 
 impl Machine {
     pub fn boot(&mut self, cpu: &mut Cpu) {
+        Bios::init_memory(self);
         let Some(floppy) = self.floppy.as_ref() else {
             panic!("Insert floppy!");
         };
@@ -60,17 +61,29 @@ impl Machine {
     pub fn handle_out(&mut self, port: u16, value: u8) {
         eprintln!("[OUT] Port 0x{port:04X} <- {value}");
     }
+    pub fn handle_in(&mut self, port: u16) -> u8 {
+        let v = 0;
+        eprintln!("[IN] Port 0x{port:04X} -> {v}");
+
+        0
+    }
 
     pub fn read_physical_u8(&self, addr: u32) -> u8 {
         match addr {
             0x00000..=0x003FF => self.memory.read_u8(addr),
-            0x00400..=0x004FF => panic!("{addr:02X}: Access to BDA (BIOS Data area)"),
+            0x00400..=0x004FF => {
+                eprintln!("[BIOS BDA][READ  8][{addr:04X}]: Access to BDA (BIOS Data area)");
+                self.memory.read_u8(addr)
+            }
             0x00500..=0x9FFFF => self.memory.read_u8(addr),
-            0xA0000..=0xB7FFF => panic!("{addr:02X}: Access to Video Ram Graphic"),
-            0xB8000..=0xBFFFF => panic!("{addr:02X}: Access to Video Ram Text"),
-            0xC0000..=0xEFFFF => panic!("{addr:02X}: Access to Option ROM"),
-            0xF0000..=0xFFFEF => panic!("{addr:02X}: Access to System BIOS ROM"),
-            0xFFFF0..=0xFFFFF => panic!("{addr:02X}: Access to Reset Vector"),
+            0xA0000..=0xB7FFF => panic!("{addr:04X}: Access to Video Ram Graphic"),
+            0xB8000..=0xBFFFF => panic!("{addr:04X}: Access to Video Ram Text"),
+            0xC0000..=0xEFFFF => panic!("{addr:04X}: Access to Option ROM"),
+            0xF0000..=0xFFFEF => {
+                eprintln!("[BIOS ROM][READ  8][{addr:04X}]");
+                self.memory.read_u8(addr)
+            }
+            0xFFFF0..=0xFFFFF => panic!("{addr:04X}: Access to Reset Vector"),
             _ => panic!("{addr:02X}: Access outside of available addresses"),
         }
     }
@@ -83,7 +96,10 @@ impl Machine {
             0xA0000..=0xB7FFF => panic!("{addr:02X}: Access to Video Ram Graphic"),
             0xB8000..=0xBFFFF => panic!("{addr:02X}: Access to Video Ram Text"),
             0xC0000..=0xEFFFF => panic!("{addr:02X}: Access to Option ROM"),
-            0xF0000..=0xFFFEF => panic!("{addr:02X}: Access to System BIOS ROM"),
+            0xF0000..=0xFFFEF => {
+                eprintln!("[BIOS ROM][READ 16][{addr:04X}]");
+                self.memory.read_u16(addr)
+            }
             0xFFFF0..=0xFFFFF => panic!("{addr:02X}: Access to Reset Vector"),
             _ => panic!("Access outside of available addresses"),
         }
@@ -97,7 +113,7 @@ impl Machine {
             0xA0000..=0xB7FFF => panic!("{addr:02X}: Write access to Video Ram Graphic"),
             0xB8000..=0xBFFFF => panic!("{addr:02X}: Write access to Video Ram Text"),
             0xC0000..=0xEFFFF => panic!("{addr:02X}: Write access to Option ROM"),
-            0xF0000..=0xFFFEF => panic!("{addr:02X}: Write access to System BIOS ROM"),
+            0xF0000..=0xFFFEF => self.memory.write_u8(addr, value),
             0xFFFF0..=0xFFFFF => panic!("{addr:02X}: Write access to Reset Vector"),
             _ => panic!("Access outside of available addresses"),
         }
